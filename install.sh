@@ -1,20 +1,32 @@
 #!/bin/bash
 set -e
 
-echo "==> Installing Python dependencies..."
-pip install -r requirements.txt
+echo ""
+echo "╔══════════════════════════════════════════╗"
+echo "║   Lead Generation System – Install       ║"
+echo "╚══════════════════════════════════════════╝"
+echo ""
 
-echo "==> Installing Playwright browser..."
+# Python deps
+echo "→ Installerer Python pakker..."
+pip install -r requirements.txt -q
+
+# Playwright Chromium (bruges til Google Maps scraping)
+echo "→ Installerer Playwright Chromium (headless browser til scraping)..."
 playwright install chromium
 
-echo "==> Creating data directory..."
+# Data folder
 mkdir -p data
 
 echo ""
-echo "Done! Setup complete."
+echo "✓ Installation færdig!"
 echo ""
-echo "Next steps:"
-echo "  1. cp .env.example .env"
-echo "  2. Edit .env with your API keys and SMTP details"
-echo "  3. python main.py"
-echo "  4. Open http://localhost:8000"
+echo "Næste trin:"
+echo "  1. python setup_wizard.py    ← interaktiv guide til gratis keys"
+echo "     ELLER"
+echo "  1. cp .env.example .env && nano .env   ← manuel konfiguration"
+echo ""
+echo "  2. python main.py            ← start systemet"
+echo "  3. Åbn http://localhost:8000"
+echo ""
+echo "Se SETUP.md for fuld guide til alle gratis muligheder."
