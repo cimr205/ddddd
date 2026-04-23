@@ -1,12 +1,16 @@
 """
-Google Maps scraper via Playwright (headless Chromium).
-Playwright downloader selv browseren – ingen key eller betaling krævet.
-Internet-adgang: systemets normale netværksforbindelse bruges direkte.
+Google Maps scraper med live screenshot + cursor streaming til dashboard.
+Playwright kører en usynlig Chromium browser lokalt – ingen API key krævet.
 """
 import asyncio
+import base64
 import random
-from typing import List, Dict
+from typing import List, Dict, Optional, TYPE_CHECKING
+
 from playwright.async_api import async_playwright, Page, BrowserContext
+
+if TYPE_CHECKING:
+    from core.monitor import Monitor
 
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -16,29 +20,57 @@ USER_AGENTS = [
 ]
 
 
-async def _human_scroll(page: Page, selector: str, times: int = 3):
-    for _ in range(times):
-        el = await page.query_selector(selector)
-        if el:
-            await el.evaluate("el => el.scrollBy(0, 800 + Math.random()*400)")
-        await asyncio.sleep(random.uniform(0.8, 1.6))
+async def _screenshot(page: Page, mon: Optional["Monitor"], label: str = "", cx: int = 0, cy: int = 0):
+    if mon is None:
+        return
+    try:
+        img = await page.screenshot(type="jpeg", quality=55, full_page=False)
+        b64 = base64.b64encode(img).decode()
+        url = page.url
+        await mon.emit_browser_frame(b64, cx, cy, url, label)
+    except Exception:
+        pass
 
 
-async def _collect_listings(page: Page, target: int) -> List[Dict]:
+async def _click_with_track(page: Page, el, mon: Optional["Monitor"], label: str = ""):
+    try:
+        box = await el.bounding_box()
+        if box:
+            cx = int(box["x"] + box["width"] / 2)
+            cy = int(box["y"] + box["height"] / 2)
+            await page.mouse.move(cx, cy)
+            await _screenshot(page, mon, f"Moving to: {label}", cx, cy)
+            await asyncio.sleep(random.uniform(0.3, 0.6))
+            await el.click(timeout=3000)
+            await asyncio.sleep(random.uniform(0.4, 0.8))
+            await _screenshot(page, mon, f"Clicked: {label}", cx, cy)
+    except Exception:
+        pass
+
+
+async def _human_scroll(page: Page, selector: str, mon: Optional["Monitor"]):
+    el = await page.query_selector(selector)
+    if el:
+        scroll_y = random.randint(700, 1100)
+        await el.evaluate(f"el => el.scrollBy(0, {scroll_y})")
+        await asyncio.sleep(random.uniform(0.9, 1.5))
+        await _screenshot(page, mon, "Scrolling results list...")
+
+
+async def _collect_listings(page: Page, target: int, mon: Optional["Monitor"]) -> List[Dict]:
     results = []
-    seen = set()
+    seen: set = set()
     stall = 0
 
     while len(results) < target and stall < 6:
-        # Google Maps feed selector – fallback to multiple possible selectors
-        cards = await page.query_selector_all('[role="feed"] > div[jsaction], [role="feed"] > div > div[jsaction]')
+        cards = await page.query_selector_all(
+            '[role="feed"] > div[jsaction], [role="feed"] > div > div[jsaction]'
+        )
         before = len(results)
 
         for card in cards:
             try:
-                name_el = await card.query_selector(
-                    '.fontHeadlineSmall, .qBF1Pd, [class*="fontHeadline"]'
-                )
+                name_el = await card.query_selector('.fontHeadlineSmall, .qBF1Pd, [class*="fontHeadline"]')
                 if not name_el:
                     continue
                 name = (await name_el.inner_text()).strip()
@@ -46,26 +78,16 @@ async def _collect_listings(page: Page, target: int) -> List[Dict]:
                     continue
                 seen.add(name)
 
-                # Rating
                 rating_el = await card.query_selector('.MW4etd')
                 rating = (await rating_el.inner_text()).strip() if rating_el else ""
 
-                # Category / type
                 cat_el = await card.query_selector('.W4Efsd span[aria-label], .DkEaL')
                 category = (await cat_el.inner_text()).strip() if cat_el else ""
 
-                results.append({
-                    "name": name,
-                    "rating": rating,
-                    "category": category,
-                    "phone": "",
-                    "website": "",
-                    "address": "",
-                })
+                results.append({"name": name, "rating": rating, "category": category, "phone": "", "website": "", "address": ""})
 
                 if len(results) >= target:
                     break
-
             except Exception:
                 continue
 
@@ -73,22 +95,22 @@ async def _collect_listings(page: Page, target: int) -> List[Dict]:
             stall += 1
         else:
             stall = 0
+            await _screenshot(page, mon, f"Collecting... {len(results)}/{target} firms found")
 
         if len(results) < target:
-            await _human_scroll(page, '[role="feed"]')
+            await _human_scroll(page, '[role="feed"]', mon)
 
     return results
 
 
-async def _enrich_listing(page: Page, name: str) -> Dict:
+async def _enrich_listing(page: Page, name: str, mon: Optional["Monitor"]) -> Dict:
     extra = {"phone": "", "website": "", "address": ""}
     try:
-        # Click on the listing to open detail panel
-        els = await page.query_selector_all(f'[aria-label="{name}"]')
+        els = await page.query_selector_all(f'[aria-label="{name}"], [data-value="{name}"]')
         clicked = False
         for el in els:
             try:
-                await el.click(timeout=2000)
+                await _click_with_track(page, el, mon, name)
                 clicked = True
                 break
             except Exception:
@@ -97,9 +119,9 @@ async def _enrich_listing(page: Page, name: str) -> Dict:
         if not clicked:
             return extra
 
-        await asyncio.sleep(random.uniform(1.2, 2.0))
+        await asyncio.sleep(random.uniform(1.0, 1.8))
+        await _screenshot(page, mon, f"Reading details: {name}")
 
-        # Phone
         phone_el = await page.query_selector(
             'button[data-tooltip*="phone"] [class*="Io6YTe"], '
             '[aria-label*="Phone"] [class*="Io6YTe"], '
@@ -108,31 +130,28 @@ async def _enrich_listing(page: Page, name: str) -> Dict:
         if phone_el:
             extra["phone"] = (await phone_el.inner_text()).strip()
 
-        # Website
         website_el = await page.query_selector(
-            'a[data-tooltip="Open website"], a[aria-label*="website"], a[href*="http"][data-item-id*="authority"]'
+            'a[data-tooltip="Open website"], a[aria-label*="website"], '
+            'a[href*="http"][data-item-id*="authority"]'
         )
         if website_el:
             extra["website"] = await website_el.get_attribute("href") or ""
 
-        # Address
-        addr_el = await page.query_selector(
-            '[data-item-id*="address"] [class*="Io6YTe"], button[aria-label*="Address"]'
-        )
+        addr_el = await page.query_selector('[data-item-id*="address"] [class*="Io6YTe"]')
         if addr_el:
             extra["address"] = (await addr_el.inner_text()).strip()
 
     except Exception:
         pass
-
     return extra
 
 
-async def scrape_google_maps(query: str, location: str, count: int = 50) -> List[Dict]:
-    """
-    Bruger Playwright Chromium (headless) til at tilgå Google Maps via internet.
-    Chromium er installeret lokalt af `playwright install chromium`.
-    """
+async def scrape_google_maps(
+    query: str,
+    location: str,
+    count: int = 50,
+    mon: Optional["Monitor"] = None,
+) -> List[Dict]:
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(
             headless=True,
@@ -143,36 +162,32 @@ async def scrape_google_maps(query: str, location: str, count: int = 50) -> List
                 "--disable-dev-shm-usage",
             ],
         )
-
         ctx: BrowserContext = await browser.new_context(
             user_agent=random.choice(USER_AGENTS),
             viewport={"width": 1280, "height": 800},
             locale="da-DK",
             timezone_id="Europe/Copenhagen",
         )
-
-        # Remove automation fingerprint
         await ctx.add_init_script("""
             Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
             window.chrome = { runtime: {} };
         """)
 
         page = await ctx.new_page()
-
         search = f"{query} {location}".replace(" ", "+")
         url = f"https://www.google.com/maps/search/{search}"
 
-        await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+        if mon:
+            await mon.emit("scraper", "Browser Agent", f"Opening Google Maps: {query} in {location}", "running")
 
-        # Accept cookies if prompted
+        await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+        await _screenshot(page, mon, f"Google Maps: {query} in {location}")
+
+        # Accept cookies
         try:
-            cookie_btn = await page.wait_for_selector(
-                'button[aria-label*="Accept"], button[jsname="b3VHJd"]',
-                timeout=4000,
-            )
-            if cookie_btn:
-                await cookie_btn.click()
-                await asyncio.sleep(1)
+            btn = await page.wait_for_selector('button[aria-label*="Accept"], button[jsname="b3VHJd"]', timeout=4000)
+            if btn:
+                await _click_with_track(page, btn, mon, "Accept cookies")
         except Exception:
             pass
 
@@ -182,17 +197,20 @@ async def scrape_google_maps(query: str, location: str, count: int = 50) -> List
             await browser.close()
             return []
 
-        # Collect listings without enrichment (fast)
-        listings = await _collect_listings(page, count)
+        await _screenshot(page, mon, f"Search results loaded – collecting firms...")
 
-        # Enrich top results with phone + website (slower but more data)
-        enrich_count = min(len(listings), count)
-        for i in range(enrich_count):
-            extra = await _enrich_listing(page, listings[i]["name"])
+        listings = await _collect_listings(page, count, mon)
+
+        if mon:
+            await mon.emit("scraper", "Browser Agent", f"Enriching {len(listings)} firms with details...", "running")
+
+        for i, listing in enumerate(listings):
+            extra = await _enrich_listing(page, listing["name"], mon)
             listings[i].update(extra)
-            if i < enrich_count - 1:
-                await asyncio.sleep(random.uniform(0.5, 1.0))
+            if i < len(listings) - 1:
+                await asyncio.sleep(random.uniform(0.4, 0.9))
 
+        await _screenshot(page, mon, f"Done – {len(listings)} firms collected")
         await browser.close()
 
     return listings

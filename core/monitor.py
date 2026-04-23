@@ -10,7 +10,7 @@ class AgentStatus:
     agent: str
     action: str
     detail: str
-    status: str  # idle | running | success | warning | error
+    status: str
     score: float = 0.0
     updated_at: str = ""
 
@@ -23,15 +23,11 @@ class Monitor:
     def __init__(self):
         self._subscribers: Set[asyncio.Queue] = set()
         self._agent_states: Dict[str, AgentStatus] = {}
-        self._stats = {
-            "total_leads": 0,
-            "emails_sent": 0,
-            "campaigns_active": 0,
-            "reply_rate": 0.0,
-        }
+        self._stats = {"total_leads": 0, "emails_sent": 0, "campaigns_active": 0}
+        self._last_frame: Dict = {}
 
     def subscribe(self) -> asyncio.Queue:
-        q: asyncio.Queue = asyncio.Queue(maxsize=256)
+        q: asyncio.Queue = asyncio.Queue(maxsize=512)
         self._subscribers.add(q)
         return q
 
@@ -39,20 +35,39 @@ class Monitor:
         self._subscribers.discard(q)
 
     async def emit(self, agent: str, action: str, detail: str, status: str, score: float = 0.0):
-        state = AgentStatus(
-            agent=agent,
-            action=action,
-            detail=detail,
-            status=status,
-            score=score,
-        )
+        state = AgentStatus(agent=agent, action=action, detail=detail, status=status, score=score)
         self._agent_states[agent] = state
+        await self._broadcast({"type": "agent_event", "data": asdict(state)})
 
-        event = {
-            "type": "agent_event",
-            "data": asdict(state),
+    async def emit_browser_frame(
+        self,
+        screenshot_b64: str,
+        cursor_x: int = 0,
+        cursor_y: int = 0,
+        page_url: str = "",
+        label: str = "",
+    ):
+        frame = {
+            "screenshot": screenshot_b64,
+            "cursor_x": cursor_x,
+            "cursor_y": cursor_y,
+            "page_url": page_url,
+            "label": label,
+            "ts": datetime.utcnow().isoformat(),
         }
-        await self._broadcast(event)
+        self._last_frame = frame
+        await self._broadcast({"type": "browser_frame", "data": frame})
+
+    async def emit_chat(self, role: str, content: str, msg_type: str = "text"):
+        await self._broadcast({
+            "type": "chat_message",
+            "data": {
+                "role": role,
+                "content": content,
+                "msg_type": msg_type,
+                "ts": datetime.utcnow().isoformat(),
+            },
+        })
 
     async def update_stats(self, **kwargs):
         self._stats.update(kwargs)
@@ -62,6 +77,7 @@ class Monitor:
         return {
             "agents": {k: asdict(v) for k, v in self._agent_states.items()},
             "stats": self._stats.copy(),
+            "last_frame": self._last_frame,
         }
 
     async def _broadcast(self, event: Dict[str, Any]):

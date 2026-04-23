@@ -1,214 +1,528 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="da">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lead Generation System</title>
-<script src="https://cdn.tailwindcss.com"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<title>Lead Agent System</title>
 <style>
-  :root { --accent: #6366f1; --accent2: #10b981; --danger: #ef4444; --warn: #f59e0b; }
-  body { background: #0a0b0f; color: #e2e8f0; font-family: 'Inter', system-ui, sans-serif; }
-  .glass { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); backdrop-filter: blur(8px); }
-  .pulse-dot { width:8px; height:8px; border-radius:50%; display:inline-block; }
-  .pulse-green { background:#10b981; box-shadow:0 0 0 0 rgba(16,185,129,.6); animation: pulse 1.5s infinite; }
-  .pulse-yellow { background:#f59e0b; }
-  .pulse-red { background:#ef4444; }
-  .pulse-gray { background:#475569; }
-  @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(16,185,129,.6)} 70%{box-shadow:0 0 0 8px rgba(16,185,129,0)} 100%{box-shadow:0 0 0 0 rgba(16,185,129,0)} }
-  .score-bar { height:4px; border-radius:2px; background:#1e293b; overflow:hidden; }
-  .score-fill { height:100%; border-radius:2px; transition: width .4s ease; }
-  .tab-btn.active { color:#6366f1; border-bottom:2px solid #6366f1; }
-  .tab-btn { border-bottom:2px solid transparent; }
-  .btn-primary { background:#6366f1; color:#fff; border-radius:8px; padding:8px 18px; font-size:14px; font-weight:600; cursor:pointer; transition:background .2s; }
-  .btn-primary:hover { background:#4f46e5; }
-  .btn-success { background:#10b981; color:#fff; border-radius:8px; padding:8px 18px; font-size:14px; font-weight:600; cursor:pointer; }
-  .btn-success:hover { background:#059669; }
-  .btn-danger { background:#ef4444; color:#fff; border-radius:8px; padding:6px 12px; font-size:12px; cursor:pointer; }
-  input, select, textarea { background:#0f1117; border:1px solid rgba(255,255,255,0.12); color:#e2e8f0; border-radius:8px; padding:8px 12px; font-size:14px; width:100%; outline:none; transition:border .2s; }
-  input:focus, select:focus, textarea:focus { border-color:#6366f1; }
-  .log-entry { font-family:monospace; font-size:12px; padding:4px 0; border-bottom:1px solid rgba(255,255,255,0.04); }
-  .status-new { color:#94a3b8; }
-  .status-contacted { color:#6366f1; }
-  .status-replied { color:#10b981; }
-  .status-unsubscribed { color:#ef4444; }
-  ::-webkit-scrollbar { width:4px; height:4px; }
-  ::-webkit-scrollbar-track { background:#0a0b0f; }
-  ::-webkit-scrollbar-thumb { background:#334155; border-radius:2px; }
-  .modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,.7); z-index:100; align-items:center; justify-content:center; }
-  .modal.open { display:flex; }
-  .badge { display:inline-block; padding:2px 8px; border-radius:99px; font-size:11px; font-weight:600; }
-  .badge-green { background:rgba(16,185,129,.15); color:#10b981; }
-  .badge-blue { background:rgba(99,102,241,.15); color:#6366f1; }
-  .badge-yellow { background:rgba(245,158,11,.15); color:#f59e0b; }
-  .badge-red { background:rgba(239,68,68,.15); color:#ef4444; }
-  .badge-gray { background:rgba(71,85,105,.2); color:#94a3b8; }
+/* ── Reset & Base ─────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:       #0d0f14;
+  --bg2:      #12151c;
+  --bg3:      #181c26;
+  --border:   rgba(255,255,255,0.07);
+  --border2:  rgba(255,255,255,0.12);
+  --text:     #e2e8f0;
+  --muted:    #64748b;
+  --accent:   #6366f1;
+  --accent2:  #10b981;
+  --warn:     #f59e0b;
+  --danger:   #ef4444;
+  --blue:     #3b82f6;
+  --font:     'Inter', system-ui, -apple-system, sans-serif;
+  --mono:     'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+}
+html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 13px; }
+
+/* ── Layout ───────────────────────────────────────────────────────────────── */
+#app {
+  display: grid;
+  grid-template-rows: 42px 1fr 54px;
+  grid-template-columns: 220px 1fr 300px;
+  height: 100vh;
+  grid-template-areas:
+    "topbar topbar topbar"
+    "sidebar main rightpanel"
+    "prompt prompt prompt";
+}
+
+/* ── Topbar ───────────────────────────────────────────────────────────────── */
+#topbar {
+  grid-area: topbar;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 16px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+}
+.logo { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14px; }
+.logo-icon { width: 24px; height: 24px; border-radius: 6px; background: linear-gradient(135deg,#6366f1,#10b981); display: grid; place-items: center; }
+.logo-icon svg { width: 14px; height: 14px; }
+.ws-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+.ws-dot.live { background: var(--accent2); box-shadow: 0 0 6px var(--accent2); animation: pulse-dot 2s infinite; }
+@keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:.4} }
+.stat-pill { display: flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 99px; background: var(--bg3); border: 1px solid var(--border); font-size: 12px; color: var(--muted); }
+.stat-pill span { font-weight: 700; color: var(--text); }
+.topbar-tabs { margin-left: auto; display: flex; gap: 2px; }
+.ttab { padding: 4px 12px; border-radius: 6px; font-size: 12px; color: var(--muted); cursor: pointer; border: none; background: transparent; transition: all .15s; }
+.ttab:hover { background: var(--bg3); color: var(--text); }
+.ttab.active { background: var(--accent); color: #fff; }
+
+/* ── Sidebar ──────────────────────────────────────────────────────────────── */
+#sidebar {
+  grid-area: sidebar;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg2);
+  border-right: 1px solid var(--border);
+  overflow: hidden;
+}
+.sidebar-section { padding: 10px 12px 6px; }
+.section-label { font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+.agent-card {
+  padding: 8px 10px;
+  border-radius: 8px;
+  margin-bottom: 4px;
+  cursor: default;
+  border: 1px solid transparent;
+  transition: all .2s;
+  background: var(--bg3);
+}
+.agent-card:hover { border-color: var(--border2); }
+.agent-card.active { border-color: rgba(99,102,241,.3); background: rgba(99,102,241,.07); }
+.agent-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.agent-name { font-size: 12px; font-weight: 600; }
+.agent-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.dot-idle { background: var(--muted); }
+.dot-running { background: var(--accent2); box-shadow: 0 0 5px var(--accent2); animation: pulse-dot 1.2s infinite; }
+.dot-success { background: var(--accent2); }
+.dot-warning { background: var(--warn); }
+.dot-error { background: var(--danger); }
+.agent-detail { font-size: 10px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 5px; }
+.score-track { height: 2px; background: var(--bg); border-radius: 1px; overflow: hidden; }
+.score-bar { height: 100%; border-radius: 1px; transition: width .4s ease, background .4s; }
+.sidebar-divider { height: 1px; background: var(--border); margin: 8px 12px; }
+#history-feed {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 12px 8px;
+}
+.history-entry {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+  padding: 3px 0;
+  border-bottom: 1px solid rgba(255,255,255,.03);
+  display: flex;
+  gap: 6px;
+}
+.history-entry .he-time { color: rgba(100,116,139,.5); flex-shrink: 0; }
+.history-entry .he-agent { flex-shrink: 0; }
+.he-running { color: var(--accent); }
+.he-success { color: var(--accent2); }
+.he-error { color: var(--danger); }
+.he-warning { color: var(--warn); }
+
+/* ── Main ─────────────────────────────────────────────────────────────────── */
+#main {
+  grid-area: main;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg);
+}
+.view-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); background: var(--bg2); padding: 0 12px; }
+.vtab { padding: 8px 14px; font-size: 12px; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; transition: all .15s; white-space: nowrap; }
+.vtab:hover { color: var(--text); }
+.vtab.active { color: var(--text); border-bottom-color: var(--accent); }
+.view { flex: 1; overflow: hidden; display: none; flex-direction: column; }
+.view.active { display: flex; }
+
+/* ── Browser View ─────────────────────────────────────────────────────────── */
+#browser-view { position: relative; background: #0a0a0a; overflow: hidden; }
+#browser-bar { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: var(--bg2); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.browser-dots { display: flex; gap: 5px; }
+.bdot { width: 10px; height: 10px; border-radius: 50%; }
+.bdot-r { background: #ff5f57; }
+.bdot-y { background: #febc2e; }
+.bdot-g { background: #28c840; }
+#browser-url { flex: 1; background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; font-size: 11px; font-family: var(--mono); color: var(--muted); }
+#browser-label { font-size: 11px; color: var(--muted); font-style: italic; }
+#browser-frame-wrap { flex: 1; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+#browser-screenshot { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 4px; display: none; }
+#browser-idle { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; opacity: .3; }
+#browser-idle svg { width: 48px; height: 48px; }
+#cursor-dot {
+  position: absolute;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: rgba(239,68,68,.8);
+  border: 2px solid rgba(255,255,255,.6);
+  transform: translate(-50%,-50%);
+  pointer-events: none;
+  transition: left .12s ease, top .12s ease;
+  display: none;
+  box-shadow: 0 0 8px rgba(239,68,68,.5);
+  z-index: 10;
+}
+#cursor-dot::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 1px solid rgba(239,68,68,.4);
+  animation: cursor-ring .6s ease-out;
+}
+@keyframes cursor-ring { from{transform:scale(1);opacity:1} to{transform:scale(2.5);opacity:0} }
+
+/* ── Logs View ────────────────────────────────────────────────────────────── */
+#logs-view { overflow: hidden; }
+#logs-container { flex: 1; overflow-y: auto; padding: 10px 14px; font-family: var(--mono); font-size: 11px; }
+.log-line { padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,.03); display: flex; gap: 10px; align-items: flex-start; }
+.log-time { color: var(--muted); flex-shrink: 0; opacity: .5; }
+.log-agent { flex-shrink: 0; min-width: 80px; font-weight: 600; }
+.log-detail { color: var(--muted); word-break: break-word; }
+.ls-running .log-agent { color: var(--accent); }
+.ls-success .log-agent { color: var(--accent2); }
+.ls-error .log-agent { color: var(--danger); }
+.ls-warning .log-agent { color: var(--warn); }
+
+/* ── Leads View ───────────────────────────────────────────────────────────── */
+#leads-view { overflow: hidden; }
+.leads-toolbar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--bg2); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.leads-toolbar input, .leads-toolbar select { background: var(--bg3); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 4px 8px; font-size: 12px; outline: none; }
+.leads-toolbar input:focus, .leads-toolbar select:focus { border-color: var(--accent); }
+.leads-count { color: var(--muted); font-size: 11px; }
+.btn { border: none; border-radius: 6px; padding: 5px 12px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all .15s; }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: #4f46e5; }
+.btn-success { background: var(--accent2); color: #fff; }
+.btn-success:hover { background: #059669; }
+.btn-ghost { background: var(--bg3); color: var(--muted); border: 1px solid var(--border); }
+.btn-ghost:hover { color: var(--text); border-color: var(--border2); }
+.btn-danger-sm { background: rgba(239,68,68,.15); color: var(--danger); border: none; border-radius: 4px; padding: 2px 7px; font-size: 11px; cursor: pointer; }
+.ml-auto { margin-left: auto; }
+#leads-table-wrap { flex: 1; overflow-y: auto; }
+table { width: 100%; border-collapse: collapse; }
+thead th { position: sticky; top: 0; background: var(--bg2); padding: 8px 12px; text-align: left; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); border-bottom: 1px solid var(--border); }
+tbody tr { border-bottom: 1px solid rgba(255,255,255,.03); transition: background .1s; }
+tbody tr:hover { background: rgba(255,255,255,.02); }
+tbody td { padding: 7px 12px; font-size: 12px; }
+.td-company { font-weight: 600; }
+.td-email { color: #818cf8; font-family: var(--mono); font-size: 11px; }
+.td-phone { color: var(--muted); font-size: 11px; }
+.badge { display: inline-flex; align-items: center; padding: 1px 7px; border-radius: 99px; font-size: 10px; font-weight: 600; }
+.badge-new { background: rgba(100,116,139,.15); color: var(--muted); }
+.badge-contacted { background: rgba(99,102,241,.15); color: #818cf8; }
+.badge-replied { background: rgba(16,185,129,.15); color: var(--accent2); }
+.conf-bar { display: flex; align-items: center; gap: 5px; }
+.conf-track { width: 32px; height: 3px; background: var(--bg3); border-radius: 2px; overflow: hidden; }
+.conf-fill { height: 100%; border-radius: 2px; }
+.leads-pagination { display: flex; align-items: center; justify-content: space-between; padding: 6px 12px; border-top: 1px solid var(--border); background: var(--bg2); flex-shrink: 0; }
+
+/* ── Campaigns View ───────────────────────────────────────────────────────── */
+#campaigns-view { overflow-y: auto; }
+.camp-grid { display: grid; grid-template-columns: 300px 1fr; gap: 16px; padding: 16px; height: 100%; }
+.camp-create-form { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 10px; align-self: start; }
+.camp-create-form label { font-size: 11px; color: var(--muted); margin-bottom: 2px; display: block; }
+.camp-create-form input, .camp-create-form textarea { background: var(--bg3); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 6px 10px; font-size: 12px; width: 100%; outline: none; }
+.camp-create-form input:focus, .camp-create-form textarea:focus { border-color: var(--accent); }
+.camp-list { display: flex; flex-direction: column; gap: 10px; }
+.camp-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+.camp-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.camp-card-name { font-weight: 600; font-size: 13px; }
+.camp-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.camp-stat { text-align: center; }
+.camp-stat-val { font-size: 18px; font-weight: 700; }
+.camp-stat-label { font-size: 10px; color: var(--muted); }
+
+/* ── Right Panel (Chat) ───────────────────────────────────────────────────── */
+#rightpanel {
+  grid-area: rightpanel;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg2);
+  border-left: 1px solid var(--border);
+  overflow: hidden;
+}
+.panel-header { padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 11px; font-weight: 600; color: var(--muted); display: flex; align-items: center; justify-content: space-between; text-transform: uppercase; letter-spacing: .06em; flex-shrink: 0; }
+.panel-header-btn { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 11px; padding: 2px 6px; border-radius: 4px; }
+.panel-header-btn:hover { background: var(--bg3); color: var(--text); }
+#chat-messages { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.chat-msg { max-width: 100%; }
+.chat-msg-user { align-self: flex-end; }
+.chat-msg-agent { align-self: flex-start; }
+.chat-bubble {
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+.chat-bubble-user { background: var(--accent); color: #fff; border-radius: 10px 10px 2px 10px; }
+.chat-bubble-agent { background: var(--bg3); border: 1px solid var(--border); border-radius: 10px 10px 10px 2px; }
+.chat-bubble-result { background: rgba(16,185,129,.08); border: 1px solid rgba(16,185,129,.2); border-radius: 10px 10px 10px 2px; }
+.chat-bubble-error { background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.2); border-radius: 10px 10px 10px 2px; }
+.chat-time { font-size: 10px; color: var(--muted); margin-top: 2px; }
+.chat-msg-user .chat-time { text-align: right; }
+
+/* Markdown-like rendering */
+.chat-bubble strong { font-weight: 700; }
+.chat-bubble code { font-family: var(--mono); background: rgba(255,255,255,.06); padding: 1px 4px; border-radius: 3px; font-size: .9em; }
+
+/* ── Prompt Bar ───────────────────────────────────────────────────────────── */
+#prompt-bar {
+  grid-area: prompt;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  background: var(--bg2);
+  border-top: 1px solid var(--border);
+}
+#prompt-input {
+  flex: 1;
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 13px;
+  padding: 8px 14px;
+  outline: none;
+  font-family: var(--font);
+  transition: border .15s;
+}
+#prompt-input:focus { border-color: var(--accent); }
+#prompt-input::placeholder { color: var(--muted); }
+#prompt-send {
+  background: var(--accent);
+  border: none;
+  color: #fff;
+  border-radius: 8px;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background .15s;
+  flex-shrink: 0;
+}
+#prompt-send:hover { background: #4f46e5; }
+#prompt-send svg { width: 16px; height: 16px; }
+.prompt-hint { font-size: 11px; color: var(--muted); flex-shrink: 0; }
+
+/* ── Scrollbar ────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,.1); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.2); }
+
+/* ── Modal ────────────────────────────────────────────────────────────────── */
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 200; align-items: center; justify-content: center; }
+.modal-overlay.open { display: flex; }
+.modal-box { background: var(--bg2); border: 1px solid var(--border2); border-radius: 12px; padding: 20px; width: 420px; max-width: 95vw; display: flex; flex-direction: column; gap: 12px; }
+.modal-title { font-size: 15px; font-weight: 700; }
+.modal-box input, .modal-box select, .modal-box textarea { background: var(--bg3); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 7px 10px; font-size: 12px; width: 100%; outline: none; }
+.modal-box input:focus, .modal-box select:focus, .modal-box textarea:focus { border-color: var(--accent); }
+.modal-footer { display: flex; gap: 8px; margin-top: 4px; }
+.modal-footer .btn { flex: 1; padding: 8px; }
+
+/* ── Spinner ──────────────────────────────────────────────────────────────── */
+.spinner { width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.15); border-top-color: var(--accent); border-radius: 50%; animation: spin .6s linear infinite; display: inline-block; }
+@keyframes spin { to { transform: rotate(360deg); } }
 </style>
 </head>
-<body class="min-h-screen">
+<body>
+<div id="app">
 
-<!-- Header -->
-<header class="glass border-b border-white/8 px-6 py-4 flex items-center justify-between sticky top-0 z-50">
-  <div class="flex items-center gap-3">
-    <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:linear-gradient(135deg,#6366f1,#10b981)">
-      <svg class="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+  <!-- ── TOPBAR ──────────────────────────────────────────────────────────── -->
+  <header id="topbar">
+    <div class="logo">
+      <div class="logo-icon">
+        <svg fill="none" viewBox="0 0 24 24" stroke="white" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+      </div>
+      Lead Agent
     </div>
-    <span class="font-bold text-lg">LeadGen System</span>
-    <span class="badge badge-green ml-2" id="ws-status">LIVE</span>
-  </div>
-  <div class="flex items-center gap-4">
-    <div id="stat-leads" class="text-center">
-      <div class="text-xl font-bold text-indigo-400" id="h-leads">0</div>
-      <div class="text-xs text-slate-500">Leads</div>
+    <div class="ws-dot" id="ws-dot"></div>
+    <div class="stat-pill">Leads <span id="h-leads">0</span></div>
+    <div class="stat-pill">Sendt <span id="h-sent">0</span></div>
+    <div class="stat-pill">Aktive <span id="h-campaigns">0</span></div>
+    <div class="topbar-tabs">
+      <button class="ttab active" onclick="switchView('browser')">Browser</button>
+      <button class="ttab" onclick="switchView('logs')">Logs</button>
+      <button class="ttab" onclick="switchView('leads')">Leads</button>
+      <button class="ttab" onclick="switchView('campaigns')">Kampagner</button>
     </div>
-    <div class="text-center">
-      <div class="text-xl font-bold text-emerald-400" id="h-sent">0</div>
-      <div class="text-xs text-slate-500">Emails Sent</div>
-    </div>
-    <div class="text-center">
-      <div class="text-xl font-bold text-amber-400" id="h-campaigns">0</div>
-      <div class="text-xs text-slate-500">Active Campaigns</div>
-    </div>
-  </div>
-</header>
+  </header>
 
-<!-- Tabs -->
-<div class="px-6 pt-4 flex gap-6 border-b border-white/8">
-  <button class="tab-btn active pb-3 text-sm font-medium" onclick="showTab('dashboard')">Dashboard</button>
-  <button class="tab-btn pb-3 text-sm font-medium text-slate-400" onclick="showTab('leads')">Leads</button>
-  <button class="tab-btn pb-3 text-sm font-medium text-slate-400" onclick="showTab('campaigns')">Campaigns</button>
-  <button class="tab-btn pb-3 text-sm font-medium text-slate-400" onclick="showTab('scrape')">Scrape</button>
-</div>
-
-<!-- ============================================================ TAB: DASHBOARD -->
-<div id="tab-dashboard" class="p-6 space-y-6">
-
-  <!-- Agent grid -->
-  <div>
-    <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Agent Monitor</h2>
-    <div class="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-5 gap-4" id="agent-grid">
-      <!-- injected by JS -->
+  <!-- ── SIDEBAR ─────────────────────────────────────────────────────────── -->
+  <aside id="sidebar">
+    <div class="sidebar-section">
+      <div class="section-label">Agenter</div>
+      <div id="agent-cards"></div>
     </div>
-  </div>
-
-  <!-- Activity feed -->
-  <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
-    <div class="glass rounded-xl p-4">
-      <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Live Activity Feed</h2>
-      <div id="activity-feed" class="space-y-1 max-h-72 overflow-y-auto"></div>
+    <div class="sidebar-divider"></div>
+    <div class="sidebar-section">
+      <div class="section-label">Aktivitet</div>
     </div>
-    <div class="glass rounded-xl p-4">
-      <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Lead Pipeline</h2>
-      <canvas id="pipeline-chart" height="180"></canvas>
-    </div>
-  </div>
-</div>
+    <div id="history-feed"></div>
+  </aside>
 
-<!-- ============================================================ TAB: LEADS -->
-<div id="tab-leads" class="p-6 hidden space-y-4">
-  <div class="flex items-center gap-3 flex-wrap">
-    <input type="text" id="lead-search" placeholder="Search company or email..." class="max-w-xs" oninput="debounce(loadLeads,400)()">
-    <select id="lead-status" onchange="loadLeads()" class="max-w-xs">
-      <option value="">All statuses</option>
-      <option value="new">New</option>
-      <option value="contacted">Contacted</option>
-      <option value="replied">Replied</option>
-    </select>
-    <div class="ml-auto flex gap-2">
-      <button class="btn-primary" onclick="openSelectModal()">Launch Campaign</button>
-      <button class="btn-success" onclick="exportLeads()">Export CSV</button>
+  <!-- ── MAIN ────────────────────────────────────────────────────────────── -->
+  <main id="main">
+    <div class="view-tabs">
+      <div class="vtab active" id="vtab-browser" onclick="switchView('browser')">🌐 Browser</div>
+      <div class="vtab" id="vtab-logs" onclick="switchView('logs')">📋 Logs</div>
+      <div class="vtab" id="vtab-leads" onclick="switchView('leads')">👥 Leads</div>
+      <div class="vtab" id="vtab-campaigns" onclick="switchView('campaigns')">📧 Kampagner</div>
     </div>
-  </div>
 
-  <div class="glass rounded-xl overflow-hidden">
-    <table class="w-full text-sm">
-      <thead>
-        <tr class="border-b border-white/8 text-slate-400 text-xs uppercase">
-          <th class="px-4 py-3 text-left"><input type="checkbox" id="select-all" onchange="toggleAll(this)"></th>
-          <th class="px-4 py-3 text-left">Company</th>
-          <th class="px-4 py-3 text-left">Email</th>
-          <th class="px-4 py-3 text-left">Phone</th>
-          <th class="px-4 py-3 text-left">Niche</th>
-          <th class="px-4 py-3 text-left">Confidence</th>
-          <th class="px-4 py-3 text-left">Status</th>
-          <th class="px-4 py-3 text-left">Action</th>
-        </tr>
-      </thead>
-      <tbody id="leads-table"></tbody>
-    </table>
-    <div class="px-4 py-3 border-t border-white/8 flex items-center justify-between">
-      <span class="text-xs text-slate-400" id="leads-count">0 leads</span>
-      <div class="flex gap-2">
-        <button class="btn-primary text-xs px-3 py-1" onclick="prevPage()">← Prev</button>
-        <button class="btn-primary text-xs px-3 py-1" onclick="nextPage()">Next →</button>
+    <!-- Browser -->
+    <div class="view active" id="view-browser">
+      <div id="browser-bar">
+        <div class="browser-dots">
+          <div class="bdot bdot-r"></div>
+          <div class="bdot bdot-y"></div>
+          <div class="bdot bdot-g"></div>
+        </div>
+        <div id="browser-url">om://idle</div>
+        <div id="browser-label">Venter på opgave...</div>
+      </div>
+      <div id="browser-frame-wrap">
+        <div id="browser-idle">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418"/>
+          </svg>
+          <div style="font-size:12px">Browser starter når agent arbejder</div>
+        </div>
+        <img id="browser-screenshot" alt="Browser preview">
+        <div id="cursor-dot"></div>
       </div>
     </div>
-  </div>
+
+    <!-- Logs -->
+    <div class="view" id="view-logs">
+      <div style="display:flex;align-items:center;gap:8px;padding:6px 12px;background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0;">
+        <span style="font-size:11px;color:var(--muted)">Live agent log</span>
+        <button class="btn btn-ghost ml-auto" style="padding:3px 8px;font-size:11px" onclick="clearLogs()">Ryd</button>
+      </div>
+      <div id="logs-container"></div>
+    </div>
+
+    <!-- Leads -->
+    <div class="view" id="view-leads">
+      <div class="leads-toolbar">
+        <input type="text" id="lead-search" placeholder="Søg firma eller email..." oninput="debouncedLeads()" style="width:180px">
+        <select id="lead-status" onchange="loadLeads()">
+          <option value="">Alle</option>
+          <option value="new">Ny</option>
+          <option value="contacted">Kontaktet</option>
+          <option value="replied">Svarede</option>
+        </select>
+        <span class="leads-count" id="leads-count">0 leads</span>
+        <div class="ml-auto" style="display:flex;gap:6px">
+          <button class="btn btn-primary" onclick="openLaunchModal()" id="launch-btn">Launch kampagne</button>
+          <button class="btn btn-success" onclick="exportLeads()">Export CSV</button>
+        </div>
+      </div>
+      <div id="leads-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th><input type="checkbox" id="select-all" onchange="toggleAll(this)"></th>
+              <th>Firma</th>
+              <th>Email</th>
+              <th>Telefon</th>
+              <th>Niche</th>
+              <th>Email Conf.</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="leads-tbody"></tbody>
+        </table>
+      </div>
+      <div class="leads-pagination">
+        <span style="font-size:11px;color:var(--muted)" id="leads-page-info">Side 1</span>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-ghost" onclick="prevPage()" style="padding:3px 10px;font-size:11px">← Forrige</button>
+          <button class="btn btn-ghost" onclick="nextPage()" style="padding:3px 10px;font-size:11px">Næste →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Campaigns -->
+    <div class="view" id="view-campaigns">
+      <div class="camp-grid">
+        <div class="camp-create-form">
+          <div style="font-weight:700;font-size:13px">Ny kampagne</div>
+          <div>
+            <label>Navn</label>
+            <input type="text" id="camp-name" placeholder="fx Rengøring DK">
+          </div>
+          <div>
+            <label>Niche</label>
+            <input type="text" id="camp-niche" placeholder="fx rengøring">
+          </div>
+          <button class="btn btn-primary" onclick="createCampaign()">Opret kampagne</button>
+        </div>
+        <div id="camp-list"></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ── RIGHT PANEL (Chat History) ─────────────────────────────────────── -->
+  <aside id="rightpanel">
+    <div class="panel-header">
+      <span>Samtale</span>
+      <button class="panel-header-btn" onclick="clearChat()">Ryd</button>
+    </div>
+    <div id="chat-messages">
+      <div class="chat-msg chat-msg-agent">
+        <div class="chat-bubble chat-bubble-agent">Hej! Jeg er klar til at arbejde for dig.
+
+Prøv at skrive:
+<code>find 50 rengøringsfirmaer i København</code>
+
+eller <code>hjælp</code> for alle kommandoer.</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ── PROMPT BAR ──────────────────────────────────────────────────────── -->
+  <footer id="prompt-bar">
+    <span class="prompt-hint">⌘</span>
+    <input
+      type="text"
+      id="prompt-input"
+      placeholder="Prompt agents... fx 'find 50 tandlæger i Aarhus' eller 'hjælp'"
+      autocomplete="off"
+    >
+    <button id="prompt-send" onclick="sendPrompt()">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.269 20.876L5.999 12zm0 0h7.5"/>
+      </svg>
+    </button>
+  </footer>
 </div>
 
-<!-- ============================================================ TAB: CAMPAIGNS -->
-<div id="tab-campaigns" class="p-6 hidden space-y-4">
-  <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
-    <!-- Create campaign form -->
-    <div class="glass rounded-xl p-4 space-y-3">
-      <h2 class="font-semibold">New Campaign</h2>
-      <input type="text" id="camp-name" placeholder="Campaign name">
-      <input type="text" id="camp-niche" placeholder="Niche (e.g. cleaning companies)">
-      <input type="text" id="camp-from" placeholder="From name (e.g. Jonas)">
-      <textarea id="camp-context" rows="3" placeholder="About your service (used by AI for personalization)..."></textarea>
-      <button class="btn-primary w-full" onclick="createCampaign()">Create Campaign</button>
+<!-- ── MODAL: Launch Campaign ─────────────────────────────────────────────── -->
+<div class="modal-overlay" id="launch-modal">
+  <div class="modal-box">
+    <div class="modal-title">Launch kampagne</div>
+    <div style="font-size:12px;color:var(--muted)" id="modal-lead-count">0 leads valgt</div>
+    <div>
+      <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Vælg kampagne</label>
+      <select id="modal-camp-select"></select>
     </div>
-
-    <!-- Campaign list -->
-    <div class="xl:col-span-2 space-y-3" id="campaigns-list">
-      <!-- injected -->
+    <div>
+      <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Fra navn</label>
+      <input type="text" id="modal-from" placeholder="fx Jonas">
+    </div>
+    <div>
+      <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Om din service (til AI email-personalisering)</label>
+      <textarea id="modal-context" rows="3" placeholder="Vi hjælper firmaer med at generere leads via AI..."></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="launchCampaign()">Send emails</button>
+      <button class="btn btn-ghost" onclick="closeModal()">Annuller</button>
     </div>
   </div>
 </div>
-
-<!-- ============================================================ TAB: SCRAPE -->
-<div id="tab-scrape" class="p-6 hidden">
-  <div class="max-w-lg glass rounded-xl p-6 space-y-4">
-    <h2 class="font-semibold text-lg">Find Leads</h2>
-    <div>
-      <label class="text-xs text-slate-400 mb-1 block">Business type / Query</label>
-      <input type="text" id="sc-query" placeholder="e.g. cleaning companies, plumbers, web agencies">
-    </div>
-    <div>
-      <label class="text-xs text-slate-400 mb-1 block">Location</label>
-      <input type="text" id="sc-location" placeholder="e.g. Copenhagen, Denmark">
-    </div>
-    <div>
-      <label class="text-xs text-slate-400 mb-1 block">Number of leads</label>
-      <input type="number" id="sc-count" value="50" min="5" max="500">
-    </div>
-    <div>
-      <label class="text-xs text-slate-400 mb-1 block">Niche label</label>
-      <input type="text" id="sc-niche" placeholder="e.g. cleaning (for email personalization)">
-    </div>
-    <button class="btn-primary w-full" id="scrape-btn" onclick="startScrape()">Start Scraping</button>
-    <div id="scrape-status" class="text-sm text-slate-400"></div>
-  </div>
-</div>
-
-
-<!-- ============================================================ MODAL: Launch Campaign -->
-<div class="modal" id="launch-modal">
-  <div class="glass rounded-2xl p-6 w-full max-w-md mx-4 space-y-4">
-    <h2 class="font-semibold text-lg">Launch Campaign</h2>
-    <p class="text-sm text-slate-400"><span id="selected-count">0</span> leads selected</p>
-    <select id="modal-campaign" class="w-full">
-      <option value="">Select campaign...</option>
-    </select>
-    <input type="text" id="modal-from" placeholder="From name">
-    <textarea id="modal-context" rows="3" placeholder="About your service (AI uses this to write emails)..."></textarea>
-    <div class="flex gap-3">
-      <button class="btn-primary flex-1" onclick="launchCampaign()">Launch</button>
-      <button class="flex-1 glass rounded-lg text-sm py-2" onclick="closeModal()">Cancel</button>
-    </div>
-  </div>
-</div>
-
 
 <script src="/static/app.js"></script>
 </body>

@@ -19,45 +19,37 @@ class ScraperAgent(BaseAgent):
         count: int = task.get("count", 50)
         niche: str = task.get("niche", query)
 
-        await self.emit("running", f"Searching Google Maps: '{query}' in '{location}'")
+        await self.emit("running", f"Åbner Google Maps: '{query}' i '{location}'")
 
-        raw = await scrape_google_maps(query, location, count)
-        await self.emit("running", f"Found {len(raw)} listings – enriching with emails...")
+        # Pass monitor so scraper can stream screenshots
+        raw = await scrape_google_maps(query, location, count, mon=monitor)
+        await self.emit("running", f"Fandt {len(raw)} firmaer – finder emails...")
 
-        leads = []
         tasks = [self._enrich(r, niche) for r in raw]
         enriched = await asyncio.gather(*tasks, return_exceptions=True)
 
-        for item in enriched:
-            if isinstance(item, dict):
-                leads.append(item)
-
+        leads = [item for item in enriched if isinstance(item, dict)]
         saved = await self._save_leads(leads)
         score = min(1.0, saved / max(count, 1))
 
         await monitor.update_stats(total_leads=await self._total_leads())
-        return {
-            "score": score,
-            "leads_found": saved,
-            "leads_target": count,
-            "leads": leads,
-        }
+        await self.emit("success", f"Gemt {saved} leads i databasen", score=score)
+
+        return {"score": score, "leads_found": saved, "leads_target": count, "leads": leads}
 
     async def _enrich(self, raw: Dict, niche: str) -> Dict:
         website = raw.get("website", "")
         email = None
+        confidence = 0.1
 
         if website:
             email = await scrape_website_email(website)
-
-        if not email and website:
-            domain = urlparse(website).netloc.lstrip("www.")
-            email = guess_email(raw.get("name", ""), domain)
-            confidence = 0.4
-        elif email:
-            confidence = 0.95
-        else:
-            confidence = 0.1
+            if email:
+                confidence = 0.95
+            else:
+                domain = urlparse(website).netloc.lstrip("www.")
+                email = guess_email(raw.get("name", ""), domain)
+                confidence = 0.4
 
         return {
             "name": raw.get("name", ""),
@@ -74,18 +66,13 @@ class ScraperAgent(BaseAgent):
     async def _save_leads(self, leads: List[Dict]) -> int:
         saved = 0
         async with SessionLocal() as db:
-            for lead_data in leads:
-                if not lead_data.get("company"):
+            for ld in leads:
+                if not ld.get("company"):
                     continue
-                existing = await db.execute(
-                    select(Lead).where(Lead.company == lead_data["company"])
-                )
+                existing = await db.execute(select(Lead).where(Lead.company == ld["company"]))
                 if existing.scalar_one_or_none():
                     continue
-
-                lead = Lead(**{k: v for k, v in lead_data.items()
-                               if k in Lead.__table__.columns.keys()})
-                db.add(lead)
+                db.add(Lead(**{k: v for k, v in ld.items() if k in Lead.__table__.columns.keys()}))
                 saved += 1
             await db.commit()
         return saved
