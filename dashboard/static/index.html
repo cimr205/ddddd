@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lead Generation System</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root { --accent: #6366f1; --accent2: #10b981; --danger: #ef4444; --warn: #f59e0b; }
+  body { background: #0a0b0f; color: #e2e8f0; font-family: 'Inter', system-ui, sans-serif; }
+  .glass { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); backdrop-filter: blur(8px); }
+  .pulse-dot { width:8px; height:8px; border-radius:50%; display:inline-block; }
+  .pulse-green { background:#10b981; box-shadow:0 0 0 0 rgba(16,185,129,.6); animation: pulse 1.5s infinite; }
+  .pulse-yellow { background:#f59e0b; }
+  .pulse-red { background:#ef4444; }
+  .pulse-gray { background:#475569; }
+  @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(16,185,129,.6)} 70%{box-shadow:0 0 0 8px rgba(16,185,129,0)} 100%{box-shadow:0 0 0 0 rgba(16,185,129,0)} }
+  .score-bar { height:4px; border-radius:2px; background:#1e293b; overflow:hidden; }
+  .score-fill { height:100%; border-radius:2px; transition: width .4s ease; }
+  .tab-btn.active { color:#6366f1; border-bottom:2px solid #6366f1; }
+  .tab-btn { border-bottom:2px solid transparent; }
+  .btn-primary { background:#6366f1; color:#fff; border-radius:8px; padding:8px 18px; font-size:14px; font-weight:600; cursor:pointer; transition:background .2s; }
+  .btn-primary:hover { background:#4f46e5; }
+  .btn-success { background:#10b981; color:#fff; border-radius:8px; padding:8px 18px; font-size:14px; font-weight:600; cursor:pointer; }
+  .btn-success:hover { background:#059669; }
+  .btn-danger { background:#ef4444; color:#fff; border-radius:8px; padding:6px 12px; font-size:12px; cursor:pointer; }
+  input, select, textarea { background:#0f1117; border:1px solid rgba(255,255,255,0.12); color:#e2e8f0; border-radius:8px; padding:8px 12px; font-size:14px; width:100%; outline:none; transition:border .2s; }
+  input:focus, select:focus, textarea:focus { border-color:#6366f1; }
+  .log-entry { font-family:monospace; font-size:12px; padding:4px 0; border-bottom:1px solid rgba(255,255,255,0.04); }
+  .status-new { color:#94a3b8; }
+  .status-contacted { color:#6366f1; }
+  .status-replied { color:#10b981; }
+  .status-unsubscribed { color:#ef4444; }
+  ::-webkit-scrollbar { width:4px; height:4px; }
+  ::-webkit-scrollbar-track { background:#0a0b0f; }
+  ::-webkit-scrollbar-thumb { background:#334155; border-radius:2px; }
+  .modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,.7); z-index:100; align-items:center; justify-content:center; }
+  .modal.open { display:flex; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:99px; font-size:11px; font-weight:600; }
+  .badge-green { background:rgba(16,185,129,.15); color:#10b981; }
+  .badge-blue { background:rgba(99,102,241,.15); color:#6366f1; }
+  .badge-yellow { background:rgba(245,158,11,.15); color:#f59e0b; }
+  .badge-red { background:rgba(239,68,68,.15); color:#ef4444; }
+  .badge-gray { background:rgba(71,85,105,.2); color:#94a3b8; }
+</style>
+</head>
+<body class="min-h-screen">
+
+<!-- Header -->
+<header class="glass border-b border-white/8 px-6 py-4 flex items-center justify-between sticky top-0 z-50">
+  <div class="flex items-center gap-3">
+    <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:linear-gradient(135deg,#6366f1,#10b981)">
+      <svg class="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+    </div>
+    <span class="font-bold text-lg">LeadGen System</span>
+    <span class="badge badge-green ml-2" id="ws-status">LIVE</span>
+  </div>
+  <div class="flex items-center gap-4">
+    <div id="stat-leads" class="text-center">
+      <div class="text-xl font-bold text-indigo-400" id="h-leads">0</div>
+      <div class="text-xs text-slate-500">Leads</div>
+    </div>
+    <div class="text-center">
+      <div class="text-xl font-bold text-emerald-400" id="h-sent">0</div>
+      <div class="text-xs text-slate-500">Emails Sent</div>
+    </div>
+    <div class="text-center">
+      <div class="text-xl font-bold text-amber-400" id="h-campaigns">0</div>
+      <div class="text-xs text-slate-500">Active Campaigns</div>
+    </div>
+  </div>
+</header>
+
+<!-- Tabs -->
+<div class="px-6 pt-4 flex gap-6 border-b border-white/8">
+  <button class="tab-btn active pb-3 text-sm font-medium" onclick="showTab('dashboard')">Dashboard</button>
+  <button class="tab-btn pb-3 text-sm font-medium text-slate-400" onclick="showTab('leads')">Leads</button>
+  <button class="tab-btn pb-3 text-sm font-medium text-slate-400" onclick="showTab('campaigns')">Campaigns</button>
+  <button class="tab-btn pb-3 text-sm font-medium text-slate-400" onclick="showTab('scrape')">Scrape</button>
+</div>
+
+<!-- ============================================================ TAB: DASHBOARD -->
+<div id="tab-dashboard" class="p-6 space-y-6">
+
+  <!-- Agent grid -->
+  <div>
+    <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Agent Monitor</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-5 gap-4" id="agent-grid">
+      <!-- injected by JS -->
+    </div>
+  </div>
+
+  <!-- Activity feed -->
+  <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+    <div class="glass rounded-xl p-4">
+      <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Live Activity Feed</h2>
+      <div id="activity-feed" class="space-y-1 max-h-72 overflow-y-auto"></div>
+    </div>
+    <div class="glass rounded-xl p-4">
+      <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Lead Pipeline</h2>
+      <canvas id="pipeline-chart" height="180"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ TAB: LEADS -->
+<div id="tab-leads" class="p-6 hidden space-y-4">
+  <div class="flex items-center gap-3 flex-wrap">
+    <input type="text" id="lead-search" placeholder="Search company or email..." class="max-w-xs" oninput="debounce(loadLeads,400)()">
+    <select id="lead-status" onchange="loadLeads()" class="max-w-xs">
+      <option value="">All statuses</option>
+      <option value="new">New</option>
+      <option value="contacted">Contacted</option>
+      <option value="replied">Replied</option>
+    </select>
+    <div class="ml-auto flex gap-2">
+      <button class="btn-primary" onclick="openSelectModal()">Launch Campaign</button>
+      <button class="btn-success" onclick="exportLeads()">Export CSV</button>
+    </div>
+  </div>
+
+  <div class="glass rounded-xl overflow-hidden">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="border-b border-white/8 text-slate-400 text-xs uppercase">
+          <th class="px-4 py-3 text-left"><input type="checkbox" id="select-all" onchange="toggleAll(this)"></th>
+          <th class="px-4 py-3 text-left">Company</th>
+          <th class="px-4 py-3 text-left">Email</th>
+          <th class="px-4 py-3 text-left">Phone</th>
+          <th class="px-4 py-3 text-left">Niche</th>
+          <th class="px-4 py-3 text-left">Confidence</th>
+          <th class="px-4 py-3 text-left">Status</th>
+          <th class="px-4 py-3 text-left">Action</th>
+        </tr>
+      </thead>
+      <tbody id="leads-table"></tbody>
+    </table>
+    <div class="px-4 py-3 border-t border-white/8 flex items-center justify-between">
+      <span class="text-xs text-slate-400" id="leads-count">0 leads</span>
+      <div class="flex gap-2">
+        <button class="btn-primary text-xs px-3 py-1" onclick="prevPage()">← Prev</button>
+        <button class="btn-primary text-xs px-3 py-1" onclick="nextPage()">Next →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ TAB: CAMPAIGNS -->
+<div id="tab-campaigns" class="p-6 hidden space-y-4">
+  <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+    <!-- Create campaign form -->
+    <div class="glass rounded-xl p-4 space-y-3">
+      <h2 class="font-semibold">New Campaign</h2>
+      <input type="text" id="camp-name" placeholder="Campaign name">
+      <input type="text" id="camp-niche" placeholder="Niche (e.g. cleaning companies)">
+      <input type="text" id="camp-from" placeholder="From name (e.g. Jonas)">
+      <textarea id="camp-context" rows="3" placeholder="About your service (used by AI for personalization)..."></textarea>
+      <button class="btn-primary w-full" onclick="createCampaign()">Create Campaign</button>
+    </div>
+
+    <!-- Campaign list -->
+    <div class="xl:col-span-2 space-y-3" id="campaigns-list">
+      <!-- injected -->
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ TAB: SCRAPE -->
+<div id="tab-scrape" class="p-6 hidden">
+  <div class="max-w-lg glass rounded-xl p-6 space-y-4">
+    <h2 class="font-semibold text-lg">Find Leads</h2>
+    <div>
+      <label class="text-xs text-slate-400 mb-1 block">Business type / Query</label>
+      <input type="text" id="sc-query" placeholder="e.g. cleaning companies, plumbers, web agencies">
+    </div>
+    <div>
+      <label class="text-xs text-slate-400 mb-1 block">Location</label>
+      <input type="text" id="sc-location" placeholder="e.g. Copenhagen, Denmark">
+    </div>
+    <div>
+      <label class="text-xs text-slate-400 mb-1 block">Number of leads</label>
+      <input type="number" id="sc-count" value="50" min="5" max="500">
+    </div>
+    <div>
+      <label class="text-xs text-slate-400 mb-1 block">Niche label</label>
+      <input type="text" id="sc-niche" placeholder="e.g. cleaning (for email personalization)">
+    </div>
+    <button class="btn-primary w-full" id="scrape-btn" onclick="startScrape()">Start Scraping</button>
+    <div id="scrape-status" class="text-sm text-slate-400"></div>
+  </div>
+</div>
+
+
+<!-- ============================================================ MODAL: Launch Campaign -->
+<div class="modal" id="launch-modal">
+  <div class="glass rounded-2xl p-6 w-full max-w-md mx-4 space-y-4">
+    <h2 class="font-semibold text-lg">Launch Campaign</h2>
+    <p class="text-sm text-slate-400"><span id="selected-count">0</span> leads selected</p>
+    <select id="modal-campaign" class="w-full">
+      <option value="">Select campaign...</option>
+    </select>
+    <input type="text" id="modal-from" placeholder="From name">
+    <textarea id="modal-context" rows="3" placeholder="About your service (AI uses this to write emails)..."></textarea>
+    <div class="flex gap-3">
+      <button class="btn-primary flex-1" onclick="launchCampaign()">Launch</button>
+      <button class="flex-1 glass rounded-lg text-sm py-2" onclick="closeModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+
+<script src="/static/app.js"></script>
+</body>
+</html>
