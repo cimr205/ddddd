@@ -1,0 +1,15 @@
+# Python cache – ikke nødvendig at have med
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# Data og database
+data/leads.db
+data/*.db
+
+# Environment secrets
+.env
+
+# Mac system filer
+.DS_Store
