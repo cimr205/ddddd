@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any, Dict, List
 
 from agents.base_agent import BaseAgent
-from email.sender import sender
+from mailer.sender import sender
 from core.database import SessionLocal, EmailLog, Campaign, Lead
 from core.monitor import monitor
 from sqlalchemy import select
