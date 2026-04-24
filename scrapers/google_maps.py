@@ -61,8 +61,11 @@ async def _collect_listings(page: Page, target: int, mon: Optional["Monitor"]) -
     results = []
     seen: set = set()
     stall = 0
+    # stall: antal scrolls uden nye resultater – stopper kun når Google Maps
+    # ikke har flere at vise (typisk ~120 per søgning på Maps)
+    max_stall = 12
 
-    while len(results) < target and stall < 6:
+    while len(results) < target and stall < max_stall:
         cards = await page.query_selector_all(
             '[role="feed"] > div[jsaction], [role="feed"] > div > div[jsaction]'
         )
@@ -94,8 +97,9 @@ async def _collect_listings(page: Page, target: int, mon: Optional["Monitor"]) -
         if len(results) == before:
             stall += 1
         else:
-            stall = 0
-            await _screenshot(page, mon, f"Collecting... {len(results)}/{target} firms found")
+            stall = 0  # reset – nye resultater fundet
+            label = f"Indsamler... {len(results)}" + (f"/{target}" if target < 9999 else "") + " firmaer"
+            await _screenshot(page, mon, label)
 
         if len(results) < target:
             await _human_scroll(page, '[role="feed"]', mon)

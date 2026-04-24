@@ -29,7 +29,7 @@ class ChatRequest(BaseModel):
 class ScrapeRequest(BaseModel):
     query: str
     location: str
-    count: int = 50
+    count: int = 50  # default 50, ingen øvre grænse
     niche: str = ""
 
 class CampaignCreate(BaseModel):
@@ -164,7 +164,7 @@ async def _execute_action(action: dict, raw: str):
 
         # Get all new leads
         async with SessionLocal() as db:
-            result = await db.execute(select(Lead).where(Lead.status == "new").limit(200))
+            result = await db.execute(select(Lead).where(Lead.status == "new"))
             leads = result.scalars().all()
 
         if not leads:

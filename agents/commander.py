@@ -57,11 +57,12 @@ HELP_TEXT = """**Tilgængelige kommandoer:**
 def _regex_parse(text: str) -> Optional[Dict]:
     t = text.lower().strip()
 
-    # Scrape patterns
+    # Scrape patterns – "alle" / "so many as possible" → 9999
+    alle = bool(re.search(r'\balle\b|\bso many\b|\bmax\b|\balt\b', t))
     m = re.search(r'(\d+)\s+(.+?)\s+i\s+(.+)', t)
-    if m or any(w in t for w in ["find", "scrape", "søg", "hent", "leads fra"]):
-        count = int(m.group(1)) if m else 50
-        query_raw = m.group(2) if m else re.sub(r'\b(find|scrape|søg|hent|leads)\b', '', t).strip()
+    if m or alle or any(w in t for w in ["find", "scrape", "søg", "hent", "leads fra"]):
+        count = 9999 if alle else (int(m.group(1)) if m else 50)
+        query_raw = m.group(2) if m else re.sub(r'\b(find|scrape|søg|hent|leads|alle)\b', '', t).strip()
         location = m.group(3) if m else "Danmark"
         return {"action": "scrape", "query": query_raw.strip(), "location": location.strip(), "count": count, "niche": query_raw.strip()}
 
