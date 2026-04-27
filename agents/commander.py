@@ -12,8 +12,11 @@ Convert the user's message to exactly one JSON action object.
 
 AVAILABLE ACTIONS:
 
-scrape – find leads via Google Maps:
+scrape – find leads via Google Maps only:
 {"action":"scrape","query":"business type","location":"city or country","count":50,"niche":"label"}
+
+full_pipeline – 4-browser: Maps + find owners + LinkedIn + emails:
+{"action":"full_pipeline","query":"business type","location":"city or country","count":50,"niche":"label"}
 
 create_campaign – create email campaign:
 {"action":"create_campaign","name":"name","niche":"niche"}
@@ -92,6 +95,17 @@ def _regex_parse(text: str) -> Optional[Dict]:
         name_m = re.search(r"['\"](.+?)['\"]", text)
         name = name_m.group(1) if name_m else "Ny kampagne"
         return {"action": "create_campaign", "name": name, "niche": ""}
+
+    # ── Full pipeline (4 browsers) ────────────────────────────────
+    if any(w in t for w in ["full pipeline", "4 browser", "find ejere", "find owner", "linkedin"]):
+        m = re.search(r'(.+?)\s+(?:i|in|på)\s+(.+)', t)
+        if m:
+            query = re.sub(r'\b(find|søg|hent|ejere|owner|linkedin|full|pipeline)\b', '', m.group(1)).strip()
+            location = _normalize_location(m.group(2).strip())
+        else:
+            query = re.sub(r'\b(find|søg|hent|ejere|owner|linkedin|full|pipeline)\b', '', t).strip() or t
+            location = "Danmark"
+        return {"action": "full_pipeline", "query": query or t, "location": location, "count": 9999, "niche": query or t}
 
     # ── Kampagne send ─────────────────────────────────────────────
     if any(w in t for w in ["send email", "launch", "kør kampagne", "send til", "send alle"]):

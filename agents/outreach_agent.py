@@ -84,10 +84,12 @@ async def _ollama_write(prompt: str) -> Optional[Dict]:
 
 
 def _smart_template(lead: Lead, campaign: Campaign) -> Dict:
+    import hashlib
     company = lead.company or "jeres virksomhed"
     niche = lead.niche or campaign.niche or "jeres branche"
     name = (lead.name or "").split()[0] if lead.name else ""
     greeting = f"Hej {name}," if name else "Hej,"
+    website = lead.website or ""
 
     templates = [
         {
@@ -97,21 +99,50 @@ def _smart_template(lead: Lead, campaign: Campaign) -> Dict:
                 f"Jeg stødte på {company} og lagde mærke til noget.\n\n"
                 f"De fleste virksomheder inden for {niche} går glip af leads "
                 f"med deres nuværende setup – vi hjælper med at fixe præcis det.\n\n"
-                f"Passer det med en kort snak i denne uge?\n\nMvh"
+                f"Passer det med en kort snak i denne uge?\n\nBedste hilsner"
             ),
         },
         {
             "subject": f"Hurtig idé til {company}",
             "body": (
                 f"{greeting}\n\n"
-                f"Vi arbejder med {niche}-virksomheder som {company} "
-                f"og hjælper dem med at generere mere omsætning automatisk.\n\n"
-                f"Har I 15 min til et hurtigt kald?\n\nMvh"
+                f"Vi arbejder specifikt med {niche}-virksomheder og har hjulpet lignende "
+                f"firmaer med at øge omsætningen uden ekstra ansatte.\n\n"
+                f"Har I 15 min til et hurtigt kald denne uge?\n\nBedste hilsner"
+            ),
+        },
+        {
+            "subject": f"Så I {company} online",
+            "body": (
+                f"{greeting}\n\n"
+                f"Fandt {company} og tænkte der kunne være en oplagt mulighed.\n\n"
+                f"Mange {niche}-firmaer kæmper med at skaffe nye kunder konsekvent. "
+                f"Vi har en metode der typisk fungerer inden for 30 dage.\n\n"
+                f"Åben for et kort kald?\n\nBedste hilsner"
+            ),
+        },
+        {
+            "subject": f"Til ejeren af {company}",
+            "body": (
+                f"{greeting}\n\n"
+                f"Jeg kontakter jer fordi vi har arbejdet med virksomheder som {company} "
+                f"og set konkrete resultater inden for {niche}.\n\n"
+                f"Kort spørgsmål: Hvad er jeres største udfordring med kundetilgang lige nu?\n\n"
+                f"Bedste hilsner"
+            ),
+        },
+        {
+            "subject": f"Kan vi hjælpe {company}?",
+            "body": (
+                f"{greeting}\n\n"
+                f"Et hurtigt spørgsmål: Er {company} åbne for nye kunder i øjeblikket?\n\n"
+                f"Vi hjælper {niche}-virksomheder med at fylde kalenderen automatisk "
+                f"– uden dyre annoncer.\n\n"
+                f"Svar gerne hvis I er interesserede.\n\nBedste hilsner"
             ),
         },
     ]
-    import hashlib
-    idx = int(hashlib.md5((company).encode()).hexdigest(), 16) % len(templates)
+    idx = int(hashlib.md5(company.encode()).hexdigest(), 16) % len(templates)
     return templates[idx]
 
 

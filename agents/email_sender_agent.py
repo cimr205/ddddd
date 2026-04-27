@@ -45,7 +45,7 @@ class EmailSenderAgent(BaseAgent):
                 continue
 
             try:
-                await sender.send(
+                await sender.send_one(
                     to_email=lead.email,
                     subject=log.subject,
                     body=log.body,

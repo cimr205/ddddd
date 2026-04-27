@@ -131,20 +131,26 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .view { flex: 1; overflow: hidden; display: none; flex-direction: column; }
 .view.active { display: flex; }
 
-/* ── Browser View ─────────────────────────────────────────────────────────── */
-#browser-view { position: relative; background: #0a0a0a; overflow: hidden; }
-#browser-bar { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: var(--bg2); border-bottom: 1px solid var(--border); flex-shrink: 0; }
-.browser-dots { display: flex; gap: 5px; }
-.bdot { width: 10px; height: 10px; border-radius: 50%; }
-.bdot-r { background: #ff5f57; }
-.bdot-y { background: #febc2e; }
-.bdot-g { background: #28c840; }
-#browser-url { flex: 1; background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; font-size: 11px; font-family: var(--mono); color: var(--muted); }
-#browser-label { font-size: 11px; color: var(--muted); font-style: italic; }
-#browser-frame-wrap { flex: 1; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; }
-#browser-screenshot { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 4px; display: none; }
-#browser-idle { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; opacity: .3; }
-#browser-idle svg { width: 48px; height: 48px; }
+/* ── Browser View (4-panel grid) ──────────────────────────────────────────── */
+#browser-grid { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; flex: 1; gap: 2px; background: #111; overflow: hidden; }
+.browser-panel { display: flex; flex-direction: column; background: #0a0a0a; position: relative; overflow: hidden; min-height: 0; }
+.browser-panel.focused { outline: 2px solid var(--accent); outline-offset: -2px; }
+.panel-bar { display: flex; align-items: center; gap: 6px; padding: 4px 8px; background: var(--bg2); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.panel-badge { font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 3px; text-transform: uppercase; letter-spacing: .04em; }
+.panel-badge.maps { background: rgba(99,102,241,.2); color: #818cf8; }
+.panel-badge.owner1 { background: rgba(245,158,11,.15); color: #f59e0b; }
+.panel-badge.owner2 { background: rgba(16,185,129,.15); color: #10b981; }
+.panel-badge.linkedin { background: rgba(14,165,233,.15); color: #38bdf8; }
+.panel-url { flex: 1; font-size: 10px; font-family: var(--mono); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.panel-label { font-size: 10px; color: var(--muted); font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
+.panel-frame-wrap { flex: 1; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.panel-screenshot { max-width: 100%; max-height: 100%; object-fit: contain; display: none; }
+.panel-idle { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; opacity: .25; }
+.panel-idle svg { width: 28px; height: 28px; }
+.panel-idle span { font-size: 10px; }
+.panel-cursor { position: absolute; width: 12px; height: 12px; border-radius: 50%; background: rgba(239,68,68,.85); border: 2px solid rgba(255,255,255,.6); transform: translate(-50%,-50%); pointer-events: none; display: none; transition: left .1s, top .1s; z-index: 10; }
+
+/* legacy compat */
 #cursor-dot {
   position: absolute;
   width: 16px; height: 16px;
@@ -321,6 +327,26 @@ tbody td { padding: 7px 12px; font-size: 12px; }
 .modal-footer { display: flex; gap: 8px; margin-top: 4px; }
 .modal-footer .btn { flex: 1; padding: 8px; }
 
+/* ── Category cards ───────────────────────────────────────────────────────── */
+.cat-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.cat-card:hover { border-color: var(--accent); background: rgba(99,102,241,.05); }
+.cat-card-top { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:10px; }
+.cat-name { font-weight: 700; font-size: 13px; line-height: 1.3; }
+.cat-total { font-size: 22px; font-weight: 800; color: var(--accent); }
+.cat-bar-wrap { height: 5px; background: var(--bg3); border-radius: 3px; overflow: hidden; margin-bottom: 8px; display:flex; gap:1px; }
+.cat-bar-seg { height: 100%; border-radius: 2px; }
+.cat-meta { display:flex; gap:10px; flex-wrap:wrap; }
+.cat-meta-item { font-size: 10px; color: var(--muted); display:flex; align-items:center; gap:4px; }
+.cat-meta-dot { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
+.cat-conf { font-size:11px; color:var(--muted); margin-top:6px; }
+
 /* ── Spinner ──────────────────────────────────────────────────────────────── */
 .spinner { width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.15); border-top-color: var(--accent); border-radius: 50%; animation: spin .6s linear infinite; display: inline-block; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -344,6 +370,7 @@ tbody td { padding: 7px 12px; font-size: 12px; }
     <div class="topbar-tabs">
       <button class="ttab active" onclick="switchView('browser')">Browser</button>
       <button class="ttab" onclick="switchView('logs')">Logs</button>
+      <button class="ttab" onclick="switchView('categories')">Kategorier</button>
       <button class="ttab" onclick="switchView('leads')">Leads</button>
       <button class="ttab" onclick="switchView('campaigns')">Kampagner</button>
     </div>
@@ -367,30 +394,78 @@ tbody td { padding: 7px 12px; font-size: 12px; }
     <div class="view-tabs">
       <div class="vtab active" id="vtab-browser" onclick="switchView('browser')">🌐 Browser</div>
       <div class="vtab" id="vtab-logs" onclick="switchView('logs')">📋 Logs</div>
+      <div class="vtab" id="vtab-categories" onclick="switchView('categories')">🗂 Kategorier</div>
       <div class="vtab" id="vtab-leads" onclick="switchView('leads')">👥 Leads</div>
       <div class="vtab" id="vtab-campaigns" onclick="switchView('campaigns')">📧 Kampagner</div>
     </div>
 
-    <!-- Browser -->
+    <!-- Browser (4-panel grid) -->
     <div class="view active" id="view-browser">
-      <div id="browser-bar">
-        <div class="browser-dots">
-          <div class="bdot bdot-r"></div>
-          <div class="bdot bdot-y"></div>
-          <div class="bdot bdot-g"></div>
+      <div id="browser-grid">
+        <!-- Panel 1: Google Maps -->
+        <div class="browser-panel" id="panel-maps" onclick="focusPanel('maps')">
+          <div class="panel-bar">
+            <span class="panel-badge maps">Maps</span>
+            <span class="panel-url" id="panel-url-maps">om://idle</span>
+            <span class="panel-label" id="panel-label-maps">Google Maps scraper</span>
+          </div>
+          <div class="panel-frame-wrap">
+            <div class="panel-idle" id="panel-idle-maps">
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 20.25l-.005-.006A9.001 9.001 0 003 12c0-4.97 4.03-9 9-9s9 4.03 9 9a9 9 0 01-5.998 8.496"/><circle cx="12" cy="12" r="3"/></svg>
+              <span>Google Maps</span>
+            </div>
+            <img class="panel-screenshot" id="panel-shot-maps" alt="">
+            <div class="panel-cursor" id="panel-cur-maps"></div>
+          </div>
         </div>
-        <div id="browser-url">om://idle</div>
-        <div id="browser-label">Venter på opgave...</div>
-      </div>
-      <div id="browser-frame-wrap">
-        <div id="browser-idle">
-          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418"/>
-          </svg>
-          <div style="font-size:12px">Browser starter når agent arbejder</div>
+        <!-- Panel 2: Owner Finder 1 -->
+        <div class="browser-panel" id="panel-owner1" onclick="focusPanel('owner1')">
+          <div class="panel-bar">
+            <span class="panel-badge owner1">Ejer 1</span>
+            <span class="panel-url" id="panel-url-owner1">om://idle</span>
+            <span class="panel-label" id="panel-label-owner1">Ejer-finder A</span>
+          </div>
+          <div class="panel-frame-wrap">
+            <div class="panel-idle" id="panel-idle-owner1">
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0"/></svg>
+              <span>Owner Finder A</span>
+            </div>
+            <img class="panel-screenshot" id="panel-shot-owner1" alt="">
+            <div class="panel-cursor" id="panel-cur-owner1"></div>
+          </div>
         </div>
-        <img id="browser-screenshot" alt="Browser preview">
-        <div id="cursor-dot"></div>
+        <!-- Panel 3: Owner Finder 2 -->
+        <div class="browser-panel" id="panel-owner2" onclick="focusPanel('owner2')">
+          <div class="panel-bar">
+            <span class="panel-badge owner2">Ejer 2</span>
+            <span class="panel-url" id="panel-url-owner2">om://idle</span>
+            <span class="panel-label" id="panel-label-owner2">Ejer-finder B</span>
+          </div>
+          <div class="panel-frame-wrap">
+            <div class="panel-idle" id="panel-idle-owner2">
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0"/></svg>
+              <span>Owner Finder B</span>
+            </div>
+            <img class="panel-screenshot" id="panel-shot-owner2" alt="">
+            <div class="panel-cursor" id="panel-cur-owner2"></div>
+          </div>
+        </div>
+        <!-- Panel 4: LinkedIn -->
+        <div class="browser-panel" id="panel-linkedin" onclick="focusPanel('linkedin')">
+          <div class="panel-bar">
+            <span class="panel-badge linkedin">LinkedIn</span>
+            <span class="panel-url" id="panel-url-linkedin">om://idle</span>
+            <span class="panel-label" id="panel-label-linkedin">LinkedIn email-finder</span>
+          </div>
+          <div class="panel-frame-wrap">
+            <div class="panel-idle" id="panel-idle-linkedin">
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 3.75H7.5A3.75 3.75 0 003.75 7.5v9a3.75 3.75 0 003.75 3.75h9a3.75 3.75 0 003.75-3.75v-9A3.75 3.75 0 0016.5 3.75z"/><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 11.25v5.25M8.25 8.25v.008"/><path stroke-linecap="round" stroke-linejoin="round" d="M11.25 16.5v-4.5a1.5 1.5 0 013 0v4.5"/></svg>
+              <span>LinkedIn Finder</span>
+            </div>
+            <img class="panel-screenshot" id="panel-shot-linkedin" alt="">
+            <div class="panel-cursor" id="panel-cur-linkedin"></div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -414,6 +489,7 @@ tbody td { padding: 7px 12px; font-size: 12px; }
           <option value="replied">Svarede</option>
         </select>
         <span class="leads-count" id="leads-count">0 leads</span>
+        <span id="leads-niche-badge" style="display:none;background:rgba(99,102,241,.15);color:#818cf8;border:1px solid rgba(99,102,241,.3);border-radius:4px;padding:2px 8px;font-size:11px;cursor:pointer"></span>
         <div class="ml-auto" style="display:flex;gap:6px">
           <button class="btn btn-primary" onclick="openLaunchModal()" id="launch-btn">Launch kampagne</button>
           <button class="btn btn-success" onclick="exportLeads()">Export CSV</button>
@@ -442,6 +518,18 @@ tbody td { padding: 7px 12px; font-size: 12px; }
           <button class="btn btn-ghost" onclick="prevPage()" style="padding:3px 10px;font-size:11px">← Forrige</button>
           <button class="btn btn-ghost" onclick="nextPage()" style="padding:3px 10px;font-size:11px">Næste →</button>
         </div>
+      </div>
+    </div>
+
+    <!-- Categories -->
+    <div class="view" id="view-categories">
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0">
+        <span style="font-size:11px;color:var(--muted)">Leads grupperet efter niche/kategori</span>
+        <button class="btn btn-ghost ml-auto" style="padding:3px 10px;font-size:11px" onclick="loadCategories()">↻ Opdater</button>
+      </div>
+      <div id="cat-summary" style="display:flex;gap:12px;padding:12px 14px;flex-shrink:0;border-bottom:1px solid var(--border);flex-wrap:wrap"></div>
+      <div style="flex:1;overflow-y:auto;padding:14px">
+        <div id="cat-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px"></div>
       </div>
     </div>
 

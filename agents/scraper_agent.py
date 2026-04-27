@@ -69,6 +69,9 @@ class ScraperAgent(BaseAgent):
             for ld in leads:
                 if not ld.get("company"):
                     continue
+                # Only save leads where we actually found a real email
+                if not ld.get("email") or ld.get("email_confidence", 0) < 0.5:
+                    continue
                 existing = await db.execute(select(Lead).where(Lead.company == ld["company"]))
                 if existing.scalar_one_or_none():
                     continue

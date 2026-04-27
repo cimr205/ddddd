@@ -6,6 +6,8 @@ from agents.scraper_agent import ScraperAgent
 from agents.outreach_agent import OutreachAgent
 from agents.email_sender_agent import EmailSenderAgent
 from agents.qa_agent import QAAgent
+from agents.owner_agent import OwnerFinderAgent
+from agents.linkedin_agent import LinkedInAgent
 from core.database import SessionLocal, Campaign, EmailLog, Lead
 from core.monitor import monitor
 from sqlalchemy import select, func
@@ -106,6 +108,9 @@ class CEOAgent:
         self.outreach = OutreachAgent()
         self.sender = EmailSenderAgent()
         self.qa = QAAgent()
+        self.owner1 = OwnerFinderAgent(panel_id="owner1")
+        self.owner2 = OwnerFinderAgent(panel_id="owner2")
+        self.linkedin = LinkedInAgent()
 
     async def run_scrape_pipeline(self, query: str, location: str, count: int, niche: str) -> Dict:
         searches = _plan_searches(query, location, count)
@@ -180,6 +185,73 @@ class CEOAgent:
             "result")
 
         return {"score": score, "leads_found": total_found, "leads_target": count, "leads": all_leads}
+
+    async def run_full_pipeline(self, query: str, location: str, count: int, niche: str) -> Dict:
+        """
+        4-browser pipeline:
+        1. (maps) Google Maps → find companies
+        2. (owner1 + owner2) Find owners in parallel
+        3. (linkedin) Find LinkedIn + email
+        """
+        await monitor.emit_chat("agent",
+            f"**4-Browser Pipeline startet**\n"
+            f"Browser 1: Google Maps → firmaer\n"
+            f"Browser 2+3: Finder ejere\n"
+            f"Browser 4: LinkedIn + emails")
+
+        # Phase 1: Scrape companies
+        result = await self.run_scrape_pipeline(query, location, count, niche)
+        all_leads = result.get("leads", [])
+
+        if not all_leads:
+            return result
+
+        # Split leads between owner1 and owner2 agents
+        mid = len(all_leads) // 2
+        batch1 = all_leads[:mid]
+        batch2 = all_leads[mid:]
+
+        await monitor.emit_chat("agent",
+            f"Fandt **{len(all_leads)} firmaer** – starter ejer-søgning på 2 browsere parallelt...")
+
+        # Phase 2: Find owners in parallel (browser 2 + 3)
+        owner_results = await asyncio.gather(
+            self.owner1.execute({"leads": batch1}),
+            self.owner2.execute({"leads": batch2}),
+            return_exceptions=True,
+        )
+
+        enriched_leads = []
+        for r in owner_results:
+            if isinstance(r, dict):
+                enriched_leads.extend(r.get("leads", []))
+
+        owners_found = sum(
+            1 for l in enriched_leads if l.get("owner_name") or l.get("linkedin_url")
+        )
+        await monitor.emit_chat("agent",
+            f"Ejere fundet: **{owners_found}/{len(enriched_leads)}** – starter LinkedIn-søgning...")
+
+        # Phase 3: LinkedIn + email (browser 4)
+        linkedin_result = await self.linkedin.execute({"leads": enriched_leads})
+        emails_found = linkedin_result.get("found_emails", 0)
+
+        final_total = await self._total_leads()
+        await monitor.emit_chat("agent",
+            f"**4-Browser Pipeline færdig**\n\n"
+            f"Firmaer fundet: **{len(all_leads)}**\n"
+            f"Ejere identificeret: **{owners_found}**\n"
+            f"Emails fundet via LinkedIn: **{emails_found}**\n"
+            f"Total leads i database: **{final_total}**",
+            "result")
+
+        return {
+            "score": result.get("score", 0),
+            "leads_found": len(all_leads),
+            "owners_found": owners_found,
+            "emails_found": emails_found,
+            "leads": enriched_leads,
+        }
 
     async def run_campaign_pipeline(
         self, campaign_id: int, lead_ids: List[int], context: str, from_name: str

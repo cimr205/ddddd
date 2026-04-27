@@ -52,7 +52,7 @@ class BaseAgent(ABC):
     async def execute(self, task: Dict[str, Any]) -> Dict[str, Any]:
         ...
 
-    async def emit(self, status: str, detail: str, score: float = 0.0):
+    async def emit(self, status: str, detail: str, score: float = 0.0, panel: str = ""):
         await monitor.emit(
             agent=self.name,
             action=self.name.replace("_", " ").title(),

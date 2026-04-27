@@ -134,6 +134,23 @@ async def _execute_action(action: dict, raw: str):
         await monitor.emit_chat("agent", done_msg, "result")
         await _save_chat("agent", done_msg)
 
+    elif a == "full_pipeline":
+        query = action.get("query", "")
+        location = action.get("location", "Danmark")
+        count = action.get("count", 50)
+        niche = action.get("niche", query)
+        reply = f"Starter **4-browser pipeline**: Maps + ejer-finder + LinkedIn for **{query}** i **{location}**..."
+        await monitor.emit_chat("agent", reply)
+        await _save_chat("agent", reply)
+
+        result = await ceo.run_full_pipeline(query, location, count, niche)
+        found = result.get("leads_found", 0)
+        owners = result.get("owners_found", 0)
+        emails = result.get("emails_found", 0)
+        done_msg = f"Pipeline færdig.\nFirmaer: **{found}** · Ejere: **{owners}** · LinkedIn-emails: **{emails}**"
+        await monitor.emit_chat("agent", done_msg, "result")
+        await _save_chat("agent", done_msg)
+
     elif a == "create_campaign":
         name = action.get("name", "Ny kampagne")
         niche = action.get("niche", "")
@@ -246,6 +263,38 @@ async def list_leads(page: int = 1, limit: int = 50, search: str = "", status: s
     }
 
 
+@app.get("/api/categories")
+async def get_categories():
+    async with SessionLocal() as db:
+        leads = (await db.execute(select(Lead))).scalars().all()
+
+    cats: Dict[str, dict] = {}
+    for l in leads:
+        key = (l.niche or "Uden kategori").strip().lower().title()
+        if key not in cats:
+            cats[key] = {"name": key, "total": 0, "new": 0, "contacted": 0,
+                         "replied": 0, "conf_sum": 0.0}
+        cats[key]["total"] += 1
+        cats[key][l.status or "new"] = cats[key].get(l.status or "new", 0) + 1
+        cats[key]["conf_sum"] += l.email_confidence or 0.0
+
+    result = []
+    for k, v in sorted(cats.items(), key=lambda x: -x[1]["total"]):
+        avg_conf = v["conf_sum"] / max(v["total"], 1)
+        result.append({
+            "name": v["name"],
+            "total": v["total"],
+            "new": v.get("new", 0),
+            "contacted": v.get("contacted", 0),
+            "replied": v.get("replied", 0),
+            "avg_confidence": round(avg_conf, 2),
+        })
+    return result
+
+
+from typing import Dict  # noqa – already imported above but ensure available
+
+
 @app.delete("/api/leads/{lead_id}")
 async def delete_lead(lead_id: int):
     async with SessionLocal() as db:
@@ -349,6 +398,20 @@ async def start_scrape(req: ScrapeRequest, background_tasks: BackgroundTasks):
 
     async def _run():
         result = await ceo.run_scrape_pipeline(req.query, req.location, req.count, req.niche or req.query)
+        _active_tasks[task_id] = {"status": "done", "result": result}
+
+    _active_tasks[task_id] = {"status": "running"}
+    background_tasks.add_task(_run)
+    return {"task_id": task_id}
+
+
+@app.post("/api/scrape/full")
+async def start_full_pipeline(req: ScrapeRequest, background_tasks: BackgroundTasks):
+    """4-browser pipeline: Maps → Owner finder → LinkedIn → email"""
+    task_id = f"full_{datetime.utcnow().timestamp()}"
+
+    async def _run():
+        result = await ceo.run_full_pipeline(req.query, req.location, req.count, req.niche or req.query)
         _active_tasks[task_id] = {"status": "done", "result": result}
 
     _active_tasks[task_id] = {"status": "running"}

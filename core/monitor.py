@@ -24,7 +24,7 @@ class Monitor:
         self._subscribers: Set[asyncio.Queue] = set()
         self._agent_states: Dict[str, AgentStatus] = {}
         self._stats = {"total_leads": 0, "emails_sent": 0, "campaigns_active": 0}
-        self._last_frame: Dict = {}
+        self._last_frames: Dict[str, Dict] = {}  # panel_id → last frame
 
     def subscribe(self) -> asyncio.Queue:
         q: asyncio.Queue = asyncio.Queue(maxsize=512)
@@ -46,8 +46,10 @@ class Monitor:
         cursor_y: int = 0,
         page_url: str = "",
         label: str = "",
+        panel_id: str = "maps",
     ):
         frame = {
+            "panel_id": panel_id,
             "screenshot": screenshot_b64,
             "cursor_x": cursor_x,
             "cursor_y": cursor_y,
@@ -55,7 +57,7 @@ class Monitor:
             "label": label,
             "ts": datetime.utcnow().isoformat(),
         }
-        self._last_frame = frame
+        self._last_frames[panel_id] = frame
         await self._broadcast({"type": "browser_frame", "data": frame})
 
     async def emit_chat(self, role: str, content: str, msg_type: str = "text"):
@@ -77,7 +79,7 @@ class Monitor:
         return {
             "agents": {k: asdict(v) for k, v in self._agent_states.items()},
             "stats": self._stats.copy(),
-            "last_frame": self._last_frame,
+            "last_frames": self._last_frames,
         }
 
     async def _broadcast(self, event: Dict[str, Any]):

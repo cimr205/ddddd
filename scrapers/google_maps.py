@@ -20,49 +20,47 @@ USER_AGENTS = [
 ]
 
 
-async def _screenshot(page: Page, mon: Optional["Monitor"], label: str = "", cx: int = 0, cy: int = 0):
+async def _screenshot(page: Page, mon: Optional["Monitor"], label: str = "", cx: int = 0, cy: int = 0, panel_id: str = "maps"):
     if mon is None:
         return
     try:
         img = await page.screenshot(type="jpeg", quality=55, full_page=False)
         b64 = base64.b64encode(img).decode()
         url = page.url
-        await mon.emit_browser_frame(b64, cx, cy, url, label)
+        await mon.emit_browser_frame(b64, cx, cy, url, label, panel_id=panel_id)
     except Exception:
         pass
 
 
-async def _click_with_track(page: Page, el, mon: Optional["Monitor"], label: str = ""):
+async def _click_with_track(page: Page, el, mon: Optional["Monitor"], label: str = "", panel_id: str = "maps"):
     try:
         box = await el.bounding_box()
         if box:
             cx = int(box["x"] + box["width"] / 2)
             cy = int(box["y"] + box["height"] / 2)
             await page.mouse.move(cx, cy)
-            await _screenshot(page, mon, f"Moving to: {label}", cx, cy)
+            await _screenshot(page, mon, f"Moving to: {label}", cx, cy, panel_id=panel_id)
             await asyncio.sleep(random.uniform(0.3, 0.6))
             await el.click(timeout=3000)
             await asyncio.sleep(random.uniform(0.4, 0.8))
-            await _screenshot(page, mon, f"Clicked: {label}", cx, cy)
+            await _screenshot(page, mon, f"Clicked: {label}", cx, cy, panel_id=panel_id)
     except Exception:
         pass
 
 
-async def _human_scroll(page: Page, selector: str, mon: Optional["Monitor"]):
+async def _human_scroll(page: Page, selector: str, mon: Optional["Monitor"], panel_id: str = "maps"):
     el = await page.query_selector(selector)
     if el:
         scroll_y = random.randint(700, 1100)
         await el.evaluate(f"el => el.scrollBy(0, {scroll_y})")
         await asyncio.sleep(random.uniform(0.9, 1.5))
-        await _screenshot(page, mon, "Scrolling results list...")
+        await _screenshot(page, mon, "Scrolling results list...", panel_id=panel_id)
 
 
-async def _collect_listings(page: Page, target: int, mon: Optional["Monitor"]) -> List[Dict]:
+async def _collect_listings(page: Page, target: int, mon: Optional["Monitor"], panel_id: str = "maps") -> List[Dict]:
     results = []
     seen: set = set()
     stall = 0
-    # stall: antal scrolls uden nye resultater – stopper kun når Google Maps
-    # ikke har flere at vise (typisk ~120 per søgning på Maps)
     max_stall = 12
 
     while len(results) < target and stall < max_stall:
@@ -97,24 +95,24 @@ async def _collect_listings(page: Page, target: int, mon: Optional["Monitor"]) -
         if len(results) == before:
             stall += 1
         else:
-            stall = 0  # reset – nye resultater fundet
+            stall = 0
             label = f"Indsamler... {len(results)}" + (f"/{target}" if target < 9999 else "") + " firmaer"
-            await _screenshot(page, mon, label)
+            await _screenshot(page, mon, label, panel_id=panel_id)
 
         if len(results) < target:
-            await _human_scroll(page, '[role="feed"]', mon)
+            await _human_scroll(page, '[role="feed"]', mon, panel_id=panel_id)
 
     return results
 
 
-async def _enrich_listing(page: Page, name: str, mon: Optional["Monitor"]) -> Dict:
+async def _enrich_listing(page: Page, name: str, mon: Optional["Monitor"], panel_id: str = "maps") -> Dict:
     extra = {"phone": "", "website": "", "address": ""}
     try:
         els = await page.query_selector_all(f'[aria-label="{name}"], [data-value="{name}"]')
         clicked = False
         for el in els:
             try:
-                await _click_with_track(page, el, mon, name)
+                await _click_with_track(page, el, mon, name, panel_id=panel_id)
                 clicked = True
                 break
             except Exception:
@@ -124,7 +122,7 @@ async def _enrich_listing(page: Page, name: str, mon: Optional["Monitor"]) -> Di
             return extra
 
         await asyncio.sleep(random.uniform(1.0, 1.8))
-        await _screenshot(page, mon, f"Reading details: {name}")
+        await _screenshot(page, mon, f"Reading details: {name}", panel_id=panel_id)
 
         phone_el = await page.query_selector(
             'button[data-tooltip*="phone"] [class*="Io6YTe"], '
@@ -155,6 +153,7 @@ async def scrape_google_maps(
     location: str,
     count: int = 50,
     mon: Optional["Monitor"] = None,
+    panel_id: str = "maps",
 ) -> List[Dict]:
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(
@@ -185,13 +184,12 @@ async def scrape_google_maps(
             await mon.emit("scraper", "Browser Agent", f"Opening Google Maps: {query} in {location}", "running")
 
         await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-        await _screenshot(page, mon, f"Google Maps: {query} in {location}")
+        await _screenshot(page, mon, f"Google Maps: {query} in {location}", panel_id=panel_id)
 
-        # Accept cookies
         try:
             btn = await page.wait_for_selector('button[aria-label*="Accept"], button[jsname="b3VHJd"]', timeout=4000)
             if btn:
-                await _click_with_track(page, btn, mon, "Accept cookies")
+                await _click_with_track(page, btn, mon, "Accept cookies", panel_id=panel_id)
         except Exception:
             pass
 
@@ -201,9 +199,9 @@ async def scrape_google_maps(
             await browser.close()
             return []
 
-        await _screenshot(page, mon, f"Search results loaded – collecting firms...")
+        await _screenshot(page, mon, f"Search results loaded – collecting firms...", panel_id=panel_id)
 
-        listings = await _collect_listings(page, count, mon)
+        listings = await _collect_listings(page, count, mon, panel_id=panel_id)
 
         if mon:
             await mon.emit("scraper", "Browser Agent", f"Enriching {len(listings)} firms with details...", "running")
@@ -214,7 +212,7 @@ async def scrape_google_maps(
             if i < len(listings) - 1:
                 await asyncio.sleep(random.uniform(0.4, 0.9))
 
-        await _screenshot(page, mon, f"Done – {len(listings)} firms collected")
+        await _screenshot(page, mon, f"Done – {len(listings)} firms collected", panel_id=panel_id)
         await browser.close()
 
     return listings

@@ -7,6 +7,7 @@ let ws = null;
 let wsRetries = 0;
 let leadsPage = 1;
 let leadsTotal = 0;
+let leadsNicheFilter = '';
 let selectedIds = new Set();
 let promptHistory = [];
 let historyIdx = -1;
@@ -21,6 +22,8 @@ const AGENTS = {
   outreach:     { label: 'Outreach',      icon: '✍️' },
   email_sender: { label: 'Email Sender',  icon: '📧' },
   qa:           { label: 'QA Agent',      icon: '✅' },
+  owner_finder: { label: 'Owner Finder',  icon: '👤' },
+  linkedin:     { label: 'LinkedIn',      icon: '🔗' },
 };
 
 // ── WebSocket ──────────────────────────────────────────────────────
@@ -54,7 +57,10 @@ function handleEvent(ev) {
     case 'init':
       renderAgentCards(ev.data.agents || {});
       updateStats(ev.data.stats || {});
-      if (ev.data.last_frame && ev.data.last_frame.screenshot) {
+      // Restore last frames for all panels
+      if (ev.data.last_frames) {
+        Object.values(ev.data.last_frames).forEach(f => { if (f && f.screenshot) showFrame(f); });
+      } else if (ev.data.last_frame && ev.data.last_frame.screenshot) {
         showFrame(ev.data.last_frame);
       }
       break;
@@ -139,47 +145,49 @@ function pushSidebarHistory(a) {
   while (feed.children.length > 150) feed.removeChild(feed.firstChild);
 }
 
-// ── Browser Frame ──────────────────────────────────────────────────
+// ── Browser Panels ─────────────────────────────────────────────────
+const PANEL_IDS = ['maps', 'owner1', 'owner2', 'linkedin'];
+let focusedPanel = 'maps';
+
+function focusPanel(id) {
+  focusedPanel = id;
+  PANEL_IDS.forEach(pid => {
+    document.getElementById(`panel-${pid}`)?.classList.toggle('focused', pid === id);
+  });
+}
+
 function showFrame(frame) {
-  const screenshot = document.getElementById('browser-screenshot');
-  const idle = document.getElementById('browser-idle');
-  const cursor = document.getElementById('cursor-dot');
-  const urlEl = document.getElementById('browser-url');
-  const labelEl = document.getElementById('browser-label');
-  const wrap = document.getElementById('browser-frame-wrap');
+  const panelId = frame.panel_id || 'maps';
+  const screenshot = document.getElementById(`panel-shot-${panelId}`);
+  const idle = document.getElementById(`panel-idle-${panelId}`);
+  const cursor = document.getElementById(`panel-cur-${panelId}`);
+  const urlEl = document.getElementById(`panel-url-${panelId}`);
+  const labelEl = document.getElementById(`panel-label-${panelId}`);
+  const wrap = screenshot?.parentElement;
 
-  if (!frame.screenshot) return;
+  if (!screenshot || !frame.screenshot) return;
 
-  idle.style.display = 'none';
+  if (idle) idle.style.display = 'none';
   screenshot.style.display = 'block';
   screenshot.src = 'data:image/jpeg;base64,' + frame.screenshot;
 
-  if (frame.page_url) urlEl.textContent = frame.page_url.slice(0, 80);
-  if (frame.label) labelEl.textContent = frame.label;
+  if (urlEl && frame.page_url) urlEl.textContent = frame.page_url.slice(0, 60);
+  if (labelEl && frame.label) labelEl.textContent = frame.label;
 
-  // Position cursor overlay
-  if (frame.cursor_x || frame.cursor_y) {
-    screenshot.onload = () => {
-      frameNaturalW = screenshot.naturalWidth || 1280;
-      frameNaturalH = screenshot.naturalHeight || 800;
-      positionCursor(cursor, wrap, screenshot, frame.cursor_x, frame.cursor_y);
-    };
-    if (screenshot.complete) {
-      positionCursor(cursor, wrap, screenshot, frame.cursor_x, frame.cursor_y);
-    }
+  if (cursor && wrap && (frame.cursor_x || frame.cursor_y)) {
+    screenshot.onload = () => positionPanelCursor(cursor, wrap, screenshot, frame.cursor_x, frame.cursor_y, 1280, 800);
+    if (screenshot.complete) positionPanelCursor(cursor, wrap, screenshot, frame.cursor_x, frame.cursor_y, 1280, 800);
     cursor.style.display = 'block';
   }
 }
 
-function positionCursor(cursor, wrap, img, cx, cy) {
+function positionPanelCursor(cursor, wrap, img, cx, cy, nw, nh) {
   const rect = img.getBoundingClientRect();
   const wrapRect = wrap.getBoundingClientRect();
-  const scaleX = rect.width / frameNaturalW;
-  const scaleY = rect.height / frameNaturalH;
-  const offsetX = rect.left - wrapRect.left;
-  const offsetY = rect.top - wrapRect.top;
-  cursor.style.left = (offsetX + cx * scaleX) + 'px';
-  cursor.style.top = (offsetY + cy * scaleY) + 'px';
+  const scaleX = rect.width / (nw || 1280);
+  const scaleY = rect.height / (nh || 800);
+  cursor.style.left = (rect.left - wrapRect.left + cx * scaleX) + 'px';
+  cursor.style.top = (rect.top - wrapRect.top + cy * scaleY) + 'px';
 }
 
 // ── Stats ──────────────────────────────────────────────────────────
@@ -297,7 +305,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // ── View switching ─────────────────────────────────────────────────
 function switchView(name) {
   currentView = name;
-  ['browser', 'logs', 'leads', 'campaigns'].forEach(v => {
+  ['browser', 'logs', 'leads', 'campaigns', 'categories'].forEach(v => {
     document.getElementById(`view-${v}`).classList.toggle('active', v === name);
     document.getElementById(`vtab-${v}`).classList.toggle('active', v === name);
   });
@@ -306,10 +314,12 @@ function switchView(name) {
       (name === 'browser' && btn.textContent === 'Browser') ||
       (name === 'logs' && btn.textContent === 'Logs') ||
       (name === 'leads' && btn.textContent === 'Leads') ||
-      (name === 'campaigns' && btn.textContent === 'Kampagner'));
+      (name === 'campaigns' && btn.textContent === 'Kampagner') ||
+      (name === 'categories' && btn.textContent.includes('Kategorier')));
   });
   if (name === 'leads') loadLeads();
   if (name === 'campaigns') loadCampaigns();
+  if (name === 'categories') loadCategories();
 }
 
 function flashTab(viewName) {
@@ -324,7 +334,7 @@ function flashTab(viewName) {
 async function loadLeads() {
   const search = document.getElementById('lead-search').value;
   const status = document.getElementById('lead-status').value;
-  const r = await fetch(`/api/leads?page=${leadsPage}&limit=50&search=${encodeURIComponent(search)}&status=${status}`);
+  const r = await fetch(`/api/leads?page=${leadsPage}&limit=50&search=${encodeURIComponent(search)}&status=${status}&niche=${encodeURIComponent(leadsNicheFilter)}`);
   const data = await r.json();
   leadsTotal = data.total;
   document.getElementById('leads-count').textContent = `${data.total} leads`;
@@ -376,6 +386,62 @@ async function deleteLead(id) {
 function prevPage() { if (leadsPage > 1) { leadsPage--; loadLeads(); } }
 function nextPage() { if (leadsPage * 50 < leadsTotal) { leadsPage++; loadLeads(); } }
 function exportLeads() { window.open('/api/leads?limit=10000', '_blank'); }
+
+// ── Categories ─────────────────────────────────────────────────────
+async function loadCategories() {
+  const grid = document.getElementById('cat-grid');
+  const summary = document.getElementById('cat-summary');
+  grid.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:16px">Henter kategorier...</div>';
+
+  const r = await fetch('/api/categories');
+  const cats = await r.json();
+
+  if (!cats.length) {
+    grid.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:16px">Ingen leads endnu. Scrape leads først.</div>';
+    summary.textContent = '';
+    return;
+  }
+
+  const totalLeads = cats.reduce((s, c) => s + c.total, 0);
+  summary.textContent = `${cats.length} kategorier · ${totalLeads} leads i alt`;
+
+  grid.innerHTML = cats.map(c => {
+    const newPct = Math.round((c.new / c.total) * 100);
+    const contPct = Math.round((c.contacted / c.total) * 100);
+    const replPct = Math.round((c.replied / c.total) * 100);
+    const conf = Math.round((c.avg_confidence || 0) * 100);
+    return `<div class="cat-card" onclick="filterLeadsByCategory('${s(c.name)}')">
+      <div class="cat-card-top">
+        <div class="cat-name">${s(c.name)}</div>
+        <div class="cat-total">${c.total}</div>
+      </div>
+      <div class="cat-bar-wrap" title="Ny: ${c.new} · Kontaktet: ${c.contacted} · Svar: ${c.replied}">
+        <div class="cat-bar-seg" style="width:${newPct}%;background:#6366f1"></div>
+        <div class="cat-bar-seg" style="width:${contPct}%;background:#f59e0b"></div>
+        <div class="cat-bar-seg" style="width:${replPct}%;background:#10b981"></div>
+      </div>
+      <div class="cat-meta">
+        <div class="cat-meta-item"><div class="cat-meta-dot" style="background:#6366f1"></div>${c.new} ny</div>
+        <div class="cat-meta-item"><div class="cat-meta-dot" style="background:#f59e0b"></div>${c.contacted} kontaktet</div>
+        <div class="cat-meta-item"><div class="cat-meta-dot" style="background:#10b981"></div>${c.replied} svar</div>
+      </div>
+      <div class="cat-conf">Email confidence: <strong>${conf}%</strong></div>
+    </div>`;
+  }).join('');
+}
+
+function filterLeadsByCategory(niche) {
+  leadsNicheFilter = niche;
+  leadsPage = 1;
+  switchView('leads');
+  // Show filter badge
+  const badge = document.getElementById('leads-niche-badge');
+  if (badge) {
+    badge.textContent = niche ? `Kategori: ${niche} ×` : '';
+    badge.style.display = niche ? 'inline-block' : 'none';
+    badge.onclick = () => { leadsNicheFilter = ''; badge.style.display = 'none'; loadLeads(); };
+  }
+}
 
 // ── Campaigns ──────────────────────────────────────────────────────
 async function loadCampaigns() {
