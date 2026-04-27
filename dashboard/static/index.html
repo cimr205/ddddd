@@ -138,9 +138,10 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .panel-bar { display: flex; align-items: center; gap: 6px; padding: 4px 8px; background: var(--bg2); border-bottom: 1px solid var(--border); flex-shrink: 0; }
 .panel-badge { font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 3px; text-transform: uppercase; letter-spacing: .04em; }
 .panel-badge.maps { background: rgba(99,102,241,.2); color: #818cf8; }
-.panel-badge.owner1 { background: rgba(245,158,11,.15); color: #f59e0b; }
-.panel-badge.owner2 { background: rgba(16,185,129,.15); color: #10b981; }
+.panel-badge.maps2 { background: rgba(167,139,250,.15); color: #a78bfa; }
+.panel-badge.owner { background: rgba(251,146,60,.15); color: #fb923c; }
 .panel-badge.linkedin { background: rgba(14,165,233,.15); color: #38bdf8; }
+.panel-action-btn { position:absolute; bottom:10px; left:50%; transform:translateX(-50%); background:var(--accent); color:#fff; border:none; border-radius:6px; padding:6px 14px; font-size:11px; font-weight:600; cursor:pointer; z-index:20; }
 .panel-url { flex: 1; font-size: 10px; font-family: var(--mono); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .panel-label { font-size: 10px; color: var(--muted); font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
 .panel-frame-wrap { flex: 1; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; cursor: pointer; }
@@ -373,6 +374,7 @@ tbody td { padding: 7px 12px; font-size: 12px; }
       <button class="ttab" onclick="switchView('categories')">Kategorier</button>
       <button class="ttab" onclick="switchView('leads')">Leads</button>
       <button class="ttab" onclick="switchView('campaigns')">Kampagner</button>
+      <button class="ttab" onclick="switchView('jobs')">📋 Jobs</button>
     </div>
   </header>
 
@@ -397,6 +399,7 @@ tbody td { padding: 7px 12px; font-size: 12px; }
       <div class="vtab" id="vtab-categories" onclick="switchView('categories')">🗂 Kategorier</div>
       <div class="vtab" id="vtab-leads" onclick="switchView('leads')">👥 Leads</div>
       <div class="vtab" id="vtab-campaigns" onclick="switchView('campaigns')">📧 Kampagner</div>
+      <div class="vtab" id="vtab-jobs" onclick="switchView('jobs')">📋 Jobs</div>
     </div>
 
     <!-- Browser (4-panel grid) -->
@@ -418,36 +421,37 @@ tbody td { padding: 7px 12px; font-size: 12px; }
             <div class="panel-cursor" id="panel-cur-maps"></div>
           </div>
         </div>
-        <!-- Panel 2: Owner Finder 1 -->
-        <div class="browser-panel" id="panel-owner1" onclick="focusPanel('owner1')">
+        <!-- Panel 2: Google Maps B -->
+        <div class="browser-panel" id="panel-maps2" onclick="focusPanel('maps2')">
           <div class="panel-bar">
-            <span class="panel-badge owner1">Ejer 1</span>
-            <span class="panel-url" id="panel-url-owner1">om://idle</span>
-            <span class="panel-label" id="panel-label-owner1">Ejer-finder A</span>
+            <span class="panel-badge maps2">Maps B</span>
+            <span class="panel-url" id="panel-url-maps2">om://idle</span>
+            <span class="panel-label" id="panel-label-maps2">Google Maps B</span>
           </div>
           <div class="panel-frame-wrap">
-            <div class="panel-idle" id="panel-idle-owner1">
-              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0"/></svg>
-              <span>Owner Finder A</span>
+            <div class="panel-idle" id="panel-idle-maps2">
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 20.25l-.005-.006A9.001 9.001 0 003 12c0-4.97 4.03-9 9-9s9 4.03 9 9a9 9 0 01-5.998 8.496"/><circle cx="12" cy="12" r="3"/></svg>
+              <span>Google Maps B</span>
             </div>
-            <img class="panel-screenshot" id="panel-shot-owner1" alt="">
-            <div class="panel-cursor" id="panel-cur-owner1"></div>
+            <img class="panel-screenshot" id="panel-shot-maps2" alt="">
+            <div class="panel-cursor" id="panel-cur-maps2"></div>
           </div>
         </div>
-        <!-- Panel 3: Owner Finder 2 -->
-        <div class="browser-panel" id="panel-owner2" onclick="focusPanel('owner2')">
+        <!-- Panel 3: Owner Finder -->
+        <div class="browser-panel" id="panel-owner" onclick="focusPanel('owner')">
           <div class="panel-bar">
-            <span class="panel-badge owner2">Ejer 2</span>
-            <span class="panel-url" id="panel-url-owner2">om://idle</span>
-            <span class="panel-label" id="panel-label-owner2">Ejer-finder B</span>
+            <span class="panel-badge owner">Ejer</span>
+            <span class="panel-url" id="panel-url-owner">om://idle</span>
+            <span class="panel-label" id="panel-label-owner">Owner Finder</span>
           </div>
           <div class="panel-frame-wrap">
-            <div class="panel-idle" id="panel-idle-owner2">
+            <div class="panel-idle" id="panel-idle-owner">
               <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0"/></svg>
-              <span>Owner Finder B</span>
+              <span>Owner Finder</span>
             </div>
-            <img class="panel-screenshot" id="panel-shot-owner2" alt="">
-            <div class="panel-cursor" id="panel-cur-owner2"></div>
+            <img class="panel-screenshot" id="panel-shot-owner" alt="">
+            <div class="panel-cursor" id="panel-cur-owner"></div>
+            <button class="panel-action-btn" onclick="runOwnerSearch()">Find ejere til alle leads</button>
           </div>
         </div>
         <!-- Panel 4: LinkedIn -->
@@ -549,6 +553,40 @@ tbody td { padding: 7px 12px; font-size: 12px; }
           <button class="btn btn-primary" onclick="createCampaign()">Opret kampagne</button>
         </div>
         <div id="camp-list"></div>
+      </div>
+    </div>
+
+    <!-- Jobs -->
+    <div class="view" id="view-jobs">
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0">
+        <span style="font-weight:700;font-size:13px">Baggrundsopgaver</span>
+        <button class="btn btn-ghost ml-auto" style="padding:3px 10px;font-size:11px" onclick="loadJobs()">↻ Opdater</button>
+      </div>
+      <div style="display:grid;grid-template-columns:300px 1fr;gap:16px;padding:16px;height:100%;overflow-y:auto">
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:10px;align-self:start">
+          <div style="font-weight:700;font-size:13px">Nyt job</div>
+          <div>
+            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:2px">Søgeord</label>
+            <input type="text" id="job-query" placeholder="fx tandlæger" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 10px;font-size:12px;width:100%;outline:none">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:2px">Lokation</label>
+            <input type="text" id="job-location" value="Danmark" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 10px;font-size:12px;width:100%;outline:none">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:2px">Antal leads</label>
+            <input type="number" id="job-count" value="1000" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 10px;font-size:12px;width:100%;outline:none">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:2px">Pipeline</label>
+            <select id="job-pipeline" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 10px;font-size:12px;width:100%;outline:none">
+              <option value="scrape">Scrape (Maps)</option>
+              <option value="full">Full (Maps + Ejere + LinkedIn)</option>
+            </select>
+          </div>
+          <button class="btn btn-primary" onclick="createJob()">Start job</button>
+        </div>
+        <div id="jobs-list" style="display:flex;flex-direction:column;gap:10px"></div>
       </div>
     </div>
   </main>

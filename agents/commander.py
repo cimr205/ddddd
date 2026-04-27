@@ -30,6 +30,9 @@ status – show system status:
 leads – show leads:
 {"action":"leads","filter":""}
 
+create_job – schedule a background job:
+{"action":"create_job","query":"business type","location":"city or country","count":1000,"niche":"label","pipeline":"scrape"}
+
 help – show help:
 {"action":"help"}
 
@@ -52,6 +55,10 @@ HELP_TEXT = """**Tilgængelige kommandoer:**
 **Kampagner:**
 `opret kampagne 'Navn'`
 `send emails til alle leads`
+
+**Baggrundsopgaver (kører natten over):**
+`schedule: 1000 CRM firmaer i USA` – start baggrundsjob
+`overnight: tandlæger i Danmark` – kør natten over
 
 **Info:**
 `status` · `leads` · `hjælp`"""
@@ -95,6 +102,27 @@ def _regex_parse(text: str) -> Optional[Dict]:
         name_m = re.search(r"['\"](.+?)['\"]", text)
         name = name_m.group(1) if name_m else "Ny kampagne"
         return {"action": "create_campaign", "name": name, "niche": ""}
+
+    # ── Schedule job ──────────────────────────────────────────────────────────────
+    if any(w in t for w in ["schedule", "plan job", "overnight", "natten", "baggrundsjob", "kør job", "job:"]):
+        # Extract the actual query from "schedule: find X in Y" or "overnight: X"
+        clean = re.sub(r'\b(schedule|plan\s+job|overnight|natten|baggrundsjob|kør\s+job|job)\b:?\s*', '', t).strip()
+        m = re.search(r'(\d+)\s+(.+?)\s+(?:i|in|på)\s+(.+)', clean)
+        if m:
+            count = int(m.group(1))
+            query = m.group(2).strip()
+            location = _normalize_location(m.group(3).strip())
+        else:
+            m2 = re.search(r'(.+?)\s+(?:i|in|på)\s+(.+)', clean)
+            if m2:
+                query = m2.group(1).strip()
+                location = _normalize_location(m2.group(2).strip())
+                count = 1000
+            else:
+                query = clean or t
+                location = "Danmark"
+                count = 1000
+        return {"action": "create_job", "query": query, "location": location, "count": count, "niche": query, "pipeline": "scrape"}
 
     # ── Full pipeline (4 browsers) ────────────────────────────────
     if any(w in t for w in ["full pipeline", "4 browser", "find ejere", "find owner", "linkedin"]):

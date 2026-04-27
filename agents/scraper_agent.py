@@ -13,6 +13,10 @@ from sqlalchemy import select
 class ScraperAgent(BaseAgent):
     name = "scraper"
 
+    def __init__(self, panel_id: str = "maps"):
+        super().__init__()
+        self.panel_id = panel_id
+
     async def execute(self, task: Dict[str, Any]) -> Dict[str, Any]:
         query: str = task.get("query", "")
         location: str = task.get("location", "")
@@ -22,7 +26,7 @@ class ScraperAgent(BaseAgent):
         await self.emit("running", f"Åbner Google Maps: '{query}' i '{location}'")
 
         # Pass monitor so scraper can stream screenshots
-        raw = await scrape_google_maps(query, location, count, mon=monitor)
+        raw = await scrape_google_maps(query, location, count, mon=monitor, panel_id=self.panel_id)
         await self.emit("running", f"Fandt {len(raw)} firmaer – finder emails...")
 
         tasks = [self._enrich(r, niche) for r in raw]
@@ -69,12 +73,17 @@ class ScraperAgent(BaseAgent):
             for ld in leads:
                 if not ld.get("company"):
                     continue
-                # Only save leads where we actually found a real email
                 if not ld.get("email") or ld.get("email_confidence", 0) < 0.5:
                     continue
+                # Skip if company already in DB
                 existing = await db.execute(select(Lead).where(Lead.company == ld["company"]))
                 if existing.scalar_one_or_none():
                     continue
+                # Skip if email already in DB
+                if ld.get("email"):
+                    existing_email = await db.execute(select(Lead).where(Lead.email == ld["email"]))
+                    if existing_email.scalar_one_or_none():
+                        continue
                 db.add(Lead(**{k: v for k, v in ld.items() if k in Lead.__table__.columns.keys()}))
                 saved += 1
             await db.commit()

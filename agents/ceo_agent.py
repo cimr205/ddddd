@@ -104,12 +104,13 @@ def _plan_searches(query: str, location: str, count: int) -> List[Dict]:
 
 class CEOAgent:
     def __init__(self):
-        self.scraper = ScraperAgent()
+        self.scraper = ScraperAgent(panel_id="maps")
+        self.scraper2 = ScraperAgent(panel_id="maps2")
         self.outreach = OutreachAgent()
         self.sender = EmailSenderAgent()
         self.qa = QAAgent()
-        self.owner1 = OwnerFinderAgent(panel_id="owner1")
-        self.owner2 = OwnerFinderAgent(panel_id="owner2")
+        self.owner1 = OwnerFinderAgent(panel_id="owner")
+        self.owner2 = OwnerFinderAgent(panel_id="owner")
         self.linkedin = LinkedInAgent()
 
     async def run_scrape_pipeline(self, query: str, location: str, count: int, niche: str) -> Dict:
@@ -134,42 +135,63 @@ class CEOAgent:
         all_leads: List[Dict] = []
         search_num = 0
 
-        for city in cities:
-            city_found = 0
-            for q in queries:
-                search_num += 1
-                current = await self._total_leads()
+        # Build flat list of (query, city) pairs for dual-parallel scraping
+        search_pairs = [(q, city) for city in cities for q in queries]
+        i = 0
+        goal_reached = False
 
-                # Stop hvis specifikt mål er nået
-                if not unlimited and current >= count:
-                    await monitor.emit("ceo", "Orchestrator",
-                        f"Mål nået: {current} leads – stopper", "success", score=1.0)
-                    goto_done = True
-                    break
-
+        while i < len(search_pairs) and not goal_reached:
+            current = await self._total_leads()
+            if not unlimited and current >= count:
                 await monitor.emit("ceo", "Orchestrator",
-                    f"[{search_num}/{len(searches)}] '{q}' i {city}", "running")
+                    f"Mål nået: {current} leads – stopper", "success", score=1.0)
+                break
 
-                task = {
-                    "query": q,
-                    "location": city,
+            pair_a = search_pairs[i]
+            pair_b = search_pairs[i + 1] if i + 1 < len(search_pairs) else None
+            i += 2
+
+            search_num += 1
+            await monitor.emit("ceo", "Orchestrator",
+                f"[{search_num}] '{pair_a[0]}' i {pair_a[1]}" +
+                (f" + '{pair_b[0]}' i {pair_b[1]}" if pair_b else ""),
+                "running")
+
+            task_a = {
+                "query": pair_a[0],
+                "location": pair_a[1],
+                "count": MAPS_PER_SEARCH,
+                "niche": niche,
+                "goal": f"Find leads: {pair_a[0]} i {pair_a[1]}",
+            }
+
+            if pair_b:
+                task_b = {
+                    "query": pair_b[0],
+                    "location": pair_b[1],
                     "count": MAPS_PER_SEARCH,
                     "niche": niche,
-                    "goal": f"Find leads: {q} i {city}",
+                    "goal": f"Find leads: {pair_b[0]} i {pair_b[1]}",
                 }
-                result = await self.scraper.run(task)
-                found = result.get("leads_found", 0)
-                total_found += found
-                city_found += found
-                all_leads.extend(result.get("leads", []))
-
-                # Hvis søgetermen ikke giver noget, hop til næste
-                if found < 5:
-                    await monitor.emit("ceo", "Orchestrator",
-                        f"Kun {found} fra '{q}' i {city} – prøver næste term", "warning")
+                results = await asyncio.gather(
+                    self.scraper.execute(task_a),
+                    self.scraper2.execute(task_b),
+                    return_exceptions=True,
+                )
             else:
-                continue
-            break  # mål nået – bryd begge loops
+                results = await asyncio.gather(
+                    self.scraper.execute(task_a),
+                    return_exceptions=True,
+                )
+
+            for result in results:
+                if isinstance(result, dict):
+                    found = result.get("leads_found", 0)
+                    total_found += found
+                    all_leads.extend(result.get("leads", []))
+                    if found < 5:
+                        await monitor.emit("ceo", "Orchestrator",
+                            f"Kun {found} leads fra søgning – prøver næste", "warning")
 
         final_total = await self._total_leads()
         score = min(1.0, final_total / count) if not unlimited else 1.0

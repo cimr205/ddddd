@@ -81,6 +81,23 @@ class ChatHistory(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class Job(Base):
+    __tablename__ = "jobs"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), default="")
+    query = Column(String(255))
+    location = Column(String(128))
+    count = Column(Integer, default=1000)
+    niche = Column(String(128), default="")
+    pipeline = Column(String(32), default="scrape")  # scrape, full
+    status = Column(String(32), default="pending")    # pending, running, done, failed
+    created_at = Column(DateTime, default=datetime.utcnow)
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
+    result_summary = Column(String(512), default="")
+    leads_found = Column(Integer, default=0)
+
+
 async def init_db():
     os.makedirs("data", exist_ok=True)
     async with engine.begin() as conn:

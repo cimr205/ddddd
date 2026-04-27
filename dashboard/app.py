@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import select, desc, func
 
-from core.database import init_db, Lead, Campaign, EmailLog, AgentEvent, ChatHistory, SessionLocal
+from core.database import init_db, Lead, Campaign, EmailLog, AgentEvent, ChatHistory, Job, SessionLocal
 from core.monitor import monitor
 from agents.ceo_agent import CEOAgent
 from agents.commander import parse_command, HELP_TEXT
@@ -41,6 +41,14 @@ class CampaignLaunch(BaseModel):
     lead_ids: List[int]
     context: str = ""
     from_name: str = "Lead System"
+
+class JobCreate(BaseModel):
+    name: str = ""
+    query: str
+    location: str = "Danmark"
+    count: int = 1000
+    niche: str = ""
+    pipeline: str = "scrape"  # scrape or full
 
 
 # ── Startup ───────────────────────────────────────────────────────────────────
@@ -198,6 +206,31 @@ async def _execute_action(action: dict, raw: str):
         done = f"Kampagne færdig. Sendt: **{sent}/{len(lead_ids)}** emails."
         await monitor.emit_chat("agent", done, "result")
         await _save_chat("agent", done)
+
+    elif a == "create_job":
+        query = action.get("query", "")
+        location = action.get("location", "Danmark")
+        count = action.get("count", 1000)
+        niche = action.get("niche", query)
+        pipeline = action.get("pipeline", "scrape")
+
+        async with SessionLocal() as db:
+            job = Job(name=f"{query} i {location}",
+                      query=query, location=location, count=count,
+                      niche=niche, pipeline=pipeline, status="pending")
+            db.add(job)
+            await db.commit()
+            await db.refresh(job)
+
+        msg = (f"**Job oprettet** og kører i baggrunden!\n\n"
+               f"Job: **{query}** i **{location}**\n"
+               f"Mål: **{count} leads**\n"
+               f"Jeg arbejder på det – du kan se fremskridt i chat og i **Jobs** fanen.")
+        await monitor.emit_chat("agent", msg, "result")
+        await _save_chat("agent", msg)
+
+        # Start it
+        asyncio.create_task(_run_job(job.id))
 
     else:
         reply = f"Forstod ikke: '{raw}'\n\nSkriv `hjælp` for at se hvad du kan gøre."
@@ -422,3 +455,125 @@ async def start_full_pipeline(req: ScrapeRequest, background_tasks: BackgroundTa
 @app.get("/api/tasks/{task_id}")
 async def task_status(task_id: str):
     return _active_tasks.get(task_id, {"status": "not_found"})
+
+
+# ── Jobs (Overnight / Scheduled) ─────────────────────────────────────────────
+
+@app.get("/api/jobs")
+async def list_jobs():
+    async with SessionLocal() as db:
+        jobs = (await db.execute(
+            select(Job).order_by(desc(Job.created_at)).limit(50)
+        )).scalars().all()
+    return [
+        {"id": j.id, "name": j.name, "query": j.query, "location": j.location,
+         "count": j.count, "pipeline": j.pipeline, "status": j.status,
+         "created_at": j.created_at, "started_at": j.started_at,
+         "finished_at": j.finished_at, "leads_found": j.leads_found,
+         "result_summary": j.result_summary}
+        for j in jobs
+    ]
+
+
+@app.post("/api/jobs")
+async def create_job_api(req: JobCreate, background_tasks: BackgroundTasks):
+    async with SessionLocal() as db:
+        job = Job(
+            name=req.name or f"{req.query} i {req.location}",
+            query=req.query, location=req.location, count=req.count,
+            niche=req.niche or req.query, pipeline=req.pipeline, status="pending",
+        )
+        db.add(job)
+        await db.commit()
+        await db.refresh(job)
+    background_tasks.add_task(_run_job, job.id)
+    return {"id": job.id, "status": "pending"}
+
+
+@app.delete("/api/jobs/{job_id}")
+async def delete_job(job_id: int):
+    async with SessionLocal() as db:
+        job = await db.get(Job, job_id)
+        if job:
+            await db.delete(job)
+            await db.commit()
+    return {"ok": True}
+
+
+async def _run_job(job_id: int):
+    async with SessionLocal() as db:
+        job = await db.get(Job, job_id)
+        if not job:
+            return
+        job.status = "running"
+        job.started_at = datetime.utcnow()
+        await db.commit()
+        job_name = job.name
+        job_query = job.query
+        job_location = job.location
+        job_count = job.count
+        job_niche = job.niche or job.query
+        job_pipeline = job.pipeline
+
+    try:
+        if job_pipeline == "full":
+            result = await ceo.run_full_pipeline(job_query, job_location, job_count, job_niche)
+        else:
+            result = await ceo.run_scrape_pipeline(job_query, job_location, job_count, job_niche)
+
+        found = result.get("leads_found", 0)
+        async with SessionLocal() as db:
+            job = await db.get(Job, job_id)
+            if job:
+                job.status = "done"
+                job.finished_at = datetime.utcnow()
+                job.leads_found = found
+                job.result_summary = f"Fandt {found} leads"
+                await db.commit()
+
+        await monitor.emit_chat(
+            "agent",
+            f"**Job færdig:** {job_name}\nLeads fundet: **{found}**\nÅbn Leads-fanen for at se resultaterne.",
+            "result"
+        )
+    except Exception as e:
+        async with SessionLocal() as db:
+            job = await db.get(Job, job_id)
+            if job:
+                job.status = "failed"
+                job.finished_at = datetime.utcnow()
+                job.result_summary = str(e)[:300]
+                await db.commit()
+        await monitor.emit_chat("agent", f"**Job fejlede:** {job_name}\n{str(e)[:200]}", "error")
+
+
+# ── Owner search (triggered from dashboard panel) ─────────────────────────────
+
+@app.post("/api/owner/run")
+async def run_owner_search(background_tasks: BackgroundTasks):
+    background_tasks.add_task(_do_owner_search)
+    return {"ok": True}
+
+
+async def _do_owner_search():
+    async with SessionLocal() as db:
+        result = await db.execute(select(Lead).where(Lead.status == "new"))
+        leads = result.scalars().all()
+
+    if not leads:
+        await monitor.emit_chat("agent", "Ingen nye leads at søge ejere for.", "error")
+        return
+
+    await monitor.emit_chat("agent", f"Starter ejer-søgning for **{len(leads)} leads**...")
+
+    mid = len(leads) // 2 + 1
+    lead_dicts_a = [{"company": l.company, "email": l.email or "", "owner_name": l.name or ""} for l in leads[:mid]]
+    lead_dicts_b = [{"company": l.company, "email": l.email or "", "owner_name": l.name or ""} for l in leads[mid:]]
+
+    import asyncio as _aio
+    await _aio.gather(
+        ceo.owner1.execute({"leads": lead_dicts_a}),
+        ceo.owner2.execute({"leads": lead_dicts_b}),
+        return_exceptions=True,
+    )
+    await monitor.emit_chat("agent", f"Ejer-søgning færdig for **{len(leads)} leads**.", "result")
