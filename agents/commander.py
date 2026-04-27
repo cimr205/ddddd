@@ -98,8 +98,9 @@ def _regex_parse(text: str) -> Optional[Dict]:
         return {"action": "launch_campaign", "campaign_id": None, "context": text, "from_name": "Lead System"}
 
     # ── Scrape ────────────────────────────────────────────────────
+    # Ingen tal = ingen grænse (9999). Kun hvis bruger skriver et tal sættes et specifikt mål.
     alle = bool(re.search(r'\balle\b|\ball\b|\bmax\b|\balt\b|\beverything\b', t))
-    count = 9999 if alle else 50
+    count = 9999  # default: kør til Maps løber tør
 
     # Pattern 1: "500 tandlæger i Aarhus" eller "find 50 lawyers in New York"
     m = re.search(r'(\d+)\s+(.+?)\s+(?:i|in|på)\s+(.+)', t)
@@ -122,15 +123,14 @@ def _regex_parse(text: str) -> Optional[Dict]:
     # Pattern 3: eksplicitte søgeord uden location
     if any(w in t for w in ["find", "scrape", "søg", "hent", "leads"]):
         query = re.sub(r'\b(find|scrape|søg|hent|leads|alle|all|fra)\b', '', t).strip()
-        return {"action": "scrape", "query": query or text, "location": "Danmark", "count": count, "niche": query or text}
+        return {"action": "scrape", "query": query or text, "location": "Danmark", "count": 9999, "niche": query or text}
 
     # Pattern 4: enkelt ord eller sætning uden location → fortolk som scrape i Danmark
-    # fx "tandlæger", "marketing agencies", "rengøring"
     words = t.split()
     if 1 <= len(words) <= 5 and not any(w in t for w in ["status", "lead", "kampagne", "send", "hjælp"]):
         query = re.sub(r'\b(alle|all|max)\b', '', t).strip()
         if query:
-            return {"action": "scrape", "query": query, "location": "Danmark", "count": count, "niche": query}
+            return {"action": "scrape", "query": query, "location": "Danmark", "count": 9999, "niche": query}
 
     return None
 

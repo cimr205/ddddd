@@ -1,5 +1,4 @@
 import asyncio
-import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -11,11 +10,8 @@ from core.database import SessionLocal, Campaign, EmailLog, Lead
 from core.monitor import monitor
 from sqlalchemy import select, func
 
-# Google Maps returnerer typisk max ~80 resultater per søgning.
-# CEO-agenten splitter automatisk på tværs af byer hvis målet er højere.
 MAPS_PER_SEARCH = 75
 
-# Danske byer sorteret efter befolkningstal
 DK_CITIES = [
     "København", "Aarhus", "Odense", "Aalborg", "Esbjerg",
     "Randers", "Kolding", "Horsens", "Vejle", "Herning",
@@ -25,7 +21,6 @@ DK_CITIES = [
     "Frederiksberg", "Glostrup", "Herlev", "Lyngby", "Ballerup",
 ]
 
-# Store europæiske byer hvis location er et land
 COUNTRY_CITIES: Dict[str, List[str]] = {
     "danmark": DK_CITIES,
     "denmark": DK_CITIES,
@@ -35,6 +30,16 @@ COUNTRY_CITIES: Dict[str, List[str]] = {
     "norway": ["Oslo", "Bergen", "Trondheim", "Stavanger"],
     "tyskland": ["Berlin", "Hamburg", "München", "Köln", "Frankfurt", "Stuttgart", "Düsseldorf"],
     "germany": ["Berlin", "Hamburg", "Munich", "Cologne", "Frankfurt", "Stuttgart"],
+    "united states": ["New York", "Los Angeles", "Chicago", "Houston", "Phoenix", "Philadelphia",
+                      "San Antonio", "San Diego", "Dallas", "San Jose", "Austin", "Jacksonville",
+                      "Seattle", "Denver", "Boston", "Miami", "Atlanta", "Minneapolis"],
+    "usa": ["New York", "Los Angeles", "Chicago", "Houston", "Phoenix", "Philadelphia",
+            "San Antonio", "San Diego", "Dallas", "San Jose", "Austin", "Jacksonville",
+            "Seattle", "Denver", "Boston", "Miami", "Atlanta", "Minneapolis"],
+    "united kingdom": ["London", "Birmingham", "Manchester", "Glasgow", "Liverpool",
+                       "Bristol", "Sheffield", "Leeds", "Edinburgh", "Leicester"],
+    "uk": ["London", "Birmingham", "Manchester", "Glasgow", "Liverpool",
+           "Bristol", "Sheffield", "Leeds", "Edinburgh"],
 }
 
 
@@ -46,17 +51,53 @@ def _get_city_list(location: str) -> List[str]:
     return COUNTRY_CITIES.get(location.lower().strip(), [location])
 
 
+def _query_variations(query: str) -> List[str]:
+    """Lav synonymer til søgeforespørgslen så vi får flere resultater."""
+    q = query.lower().strip()
+    variations = [query]  # original altid først
+
+    synonyms = {
+        "marketing": ["marketing agency", "digital marketing", "marketing bureau", "reklamebureau"],
+        "rengøring": ["rengøringsservice", "rengøringsfirma", "cleaning service", "erhvervsrengøring"],
+        "tandlæge": ["tandlæger", "dental clinic", "dentist", "tandklinik"],
+        "advokat": ["advokatfirma", "law firm", "lawyers", "juridisk rådgivning"],
+        "revisor": ["revisorfirma", "accounting", "bogholder", "bogføring"],
+        "tømrer": ["tømrerfirma", "snedker", "carpenter", "byggefirma"],
+        "maler": ["malerfirma", "painter", "malerservice"],
+        "elektriker": ["el-installatør", "electrician", "elfirma"],
+        "VVS": ["VVS-firma", "plumber", "blikkenslager", "VVS-installatør"],
+        "restaurant": ["restaurant", "cafe", "spisested", "bistro"],
+        "frisør": ["frisørsalon", "hair salon", "barber"],
+        "webshop": ["e-commerce", "online shop", "netbutik"],
+        "IT": ["IT-firma", "software company", "tech startup"],
+    }
+
+    for key, syns in synonyms.items():
+        if key in q:
+            for s in syns:
+                if s.lower() != q and s not in variations:
+                    variations.append(s)
+            break  # kun match første nøgleord
+
+    return variations
+
+
 def _plan_searches(query: str, location: str, count: int) -> List[Dict]:
     """
-    CEO tænker: hvor mange søgninger skal der til for at nå målet?
-    Splitter automatisk på tværs af byer.
+    CEO planlægger søgninger:
+    - Splitter på byer hvis location er et land
+    - Tilføjer query-variationer for at finde flere resultater
+    - count=9999 = ingen grænse, kør alt
     """
-    if count <= MAPS_PER_SEARCH and not _is_country(location):
-        return [{"query": query, "location": location, "count": count}]
-
     cities = _get_city_list(location)
-    per_city = max(MAPS_PER_SEARCH, -(-count // max(len(cities), 1)))  # ceiling division
-    return [{"query": query, "location": city, "count": per_city} for city in cities]
+    queries = _query_variations(query)
+
+    searches = []
+    for city in cities:
+        for q in queries:
+            searches.append({"query": q, "location": city, "count": MAPS_PER_SEARCH})
+
+    return searches
 
 
 class CEOAgent:
@@ -68,95 +109,89 @@ class CEOAgent:
 
     async def run_scrape_pipeline(self, query: str, location: str, count: int, niche: str) -> Dict:
         searches = _plan_searches(query, location, count)
-        multi = len(searches) > 1
+        unlimited = (count >= 9999)
 
-        if multi:
-            await monitor.emit(
-                "ceo", "Orchestrator",
-                f"Mål: {count} leads → splitter i {len(searches)} søgninger på tværs af byer",
-                "running",
-            )
-            await monitor.emit_chat(
-                "agent",
-                f"Forstår – {count} leads kræver flere søgninger.\n"
-                f"Planlægger **{len(searches)} søgninger** på tværs af: "
-                + ", ".join(s['location'] for s in searches[:6])
-                + ("..." if len(searches) > 6 else ""),
-            )
-        else:
-            await monitor.emit("ceo", "Orchestrator", f"Starter scrape: {query} i {location}", "running")
+        cities = _get_city_list(location)
+        queries = _query_variations(query)
+
+        await monitor.emit_chat(
+            "agent",
+            f"Starter søgning: **{query}** i **{location}**\n"
+            + (f"Ingen grænse – kører til Maps løber tør\n" if unlimited else f"Mål: **{count} leads**\n")
+            + f"Plan: **{len(cities)} {'by' if len(cities)==1 else 'byer'}** × **{len(queries)} søgeterm{'er' if len(queries)>1 else ''}**",
+        )
+
+        await monitor.emit("ceo", "Orchestrator",
+            f"Plan: {len(searches)} søgninger ({len(cities)} byer × {len(queries)} termer)",
+            "running")
 
         total_found = 0
         all_leads: List[Dict] = []
+        search_num = 0
 
-        for i, search in enumerate(searches):
-            current = await self._total_leads()
-            if current >= count and count < 9999:
-                await monitor.emit("ceo", "Orchestrator", f"Mål nået ({current} leads) – stopper", "success", score=1.0)
-                break
+        for city in cities:
+            city_found = 0
+            for q in queries:
+                search_num += 1
+                current = await self._total_leads()
 
-            remaining = (count - current) if count < 9999 else search["count"]
-            if remaining <= 0:
-                break
+                # Stop hvis specifikt mål er nået
+                if not unlimited and current >= count:
+                    await monitor.emit("ceo", "Orchestrator",
+                        f"Mål nået: {current} leads – stopper", "success", score=1.0)
+                    goto_done = True
+                    break
 
-            if multi:
-                await monitor.emit(
-                    "ceo", "Orchestrator",
-                    f"[{i+1}/{len(searches)}] {search['query']} i {search['location']} (mål: {remaining})",
-                    "running",
-                )
+                await monitor.emit("ceo", "Orchestrator",
+                    f"[{search_num}/{len(searches)}] '{q}' i {city}", "running")
 
-            task = {
-                "query": search["query"],
-                "location": search["location"],
-                "count": min(remaining, MAPS_PER_SEARCH),
-                "niche": niche,
-                "goal": f"Find leads i {search['location']}",
-            }
-            result = await self.scraper.run(task)
-            found = result.get("leads_found", 0)
-            total_found += found
-            all_leads.extend(result.get("leads", []))
+                task = {
+                    "query": q,
+                    "location": city,
+                    "count": MAPS_PER_SEARCH,
+                    "niche": niche,
+                    "goal": f"Find leads: {q} i {city}",
+                }
+                result = await self.scraper.run(task)
+                found = result.get("leads_found", 0)
+                total_found += found
+                city_found += found
+                all_leads.extend(result.get("leads", []))
 
-            await self.qa.run({"agent": "scraper", "result": result, "goal": task["goal"]})
-
-            if multi and found < 10:
-                await monitor.emit(
-                    "ceo", "Orchestrator",
-                    f"{search['location']}: kun {found} fundet – fortsætter til næste by",
-                    "warning",
-                )
+                # Hvis søgetermen ikke giver noget, hop til næste
+                if found < 5:
+                    await monitor.emit("ceo", "Orchestrator",
+                        f"Kun {found} fra '{q}' i {city} – prøver næste term", "warning")
+            else:
+                continue
+            break  # mål nået – bryd begge loops
 
         final_total = await self._total_leads()
-        score = min(1.0, final_total / max(count, 1)) if count < 9999 else 1.0
+        score = min(1.0, final_total / count) if not unlimited else 1.0
 
-        await monitor.emit(
-            "ceo", "Orchestrator",
-            f"Færdig: {total_found} leads gemt (total i DB: {final_total})",
-            "success",
-            score=score,
-        )
+        await monitor.emit("ceo", "Orchestrator",
+            f"Færdig: {total_found} nye leads gemt (total: {final_total})", "success", score=score)
 
-        if multi:
-            await monitor.emit_chat(
-                "agent",
-                f"Scraping færdig.\n\n"
-                f"Søgte i **{len(searches)} byer** og gemte **{total_found} leads**.\n"
-                f"Total i database: **{final_total}**",
-                "result",
-            )
+        await monitor.emit_chat("agent",
+            f"Søgning færdig.\n\n"
+            f"Nye leads gemt: **{total_found}**\n"
+            f"Total i database: **{final_total}**\n"
+            f"Søgninger kørt: **{search_num}**",
+            "result")
 
         return {"score": score, "leads_found": total_found, "leads_target": count, "leads": all_leads}
 
     async def run_campaign_pipeline(
         self, campaign_id: int, lead_ids: List[int], context: str, from_name: str
     ) -> Dict:
-        await monitor.emit("ceo", "Orchestrator", f"Kampagne {campaign_id}: {len(lead_ids)} emails", "running")
+        await monitor.emit("ceo", "Orchestrator",
+            f"Kampagne {campaign_id}: {len(lead_ids)} emails", "running")
 
         await self._generate_email_logs(campaign_id, lead_ids, context)
 
-        outreach_result = {"score": 0.9, "emails_prepared": len(lead_ids)}
-        await self.qa.run({"agent": "outreach", "result": outreach_result, "goal": "Write emails"})
+        await self.qa.run({"agent": "outreach",
+            "result": {"score": 0.9, "emails_prepared": len(lead_ids)},
+            "goal": "Write emails"})
 
         send_result = await self.sender.run({
             "campaign_id": campaign_id,
@@ -172,12 +207,10 @@ class CEOAgent:
                 camp.status = "done" if send_result.get("score", 0) >= 0.8 else "paused"
                 await db.commit()
 
-        await monitor.emit(
-            "ceo", "Orchestrator",
+        await monitor.emit("ceo", "Orchestrator",
             f"Kampagne done: {send_result.get('sent', 0)} sendt",
-            "success",
-            score=send_result.get("score", 0),
-        )
+            "success", score=send_result.get("score", 0))
+
         return {"sending": send_result}
 
     async def _generate_email_logs(self, campaign_id: int, lead_ids: List[int], context: str):
