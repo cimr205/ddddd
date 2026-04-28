@@ -25,6 +25,10 @@ class Monitor:
         self._agent_states: Dict[str, AgentStatus] = {}
         self._stats = {"total_leads": 0, "emails_sent": 0, "campaigns_active": 0}
         self._last_frames: Dict[str, Dict] = {}  # panel_id → last frame
+        self._telegram_callback = None  # set by TelegramBot on startup
+
+    def set_telegram(self, callback):
+        self._telegram_callback = callback
 
     def subscribe(self) -> asyncio.Queue:
         q: asyncio.Queue = asyncio.Queue(maxsize=512)
@@ -70,6 +74,12 @@ class Monitor:
                 "ts": datetime.utcnow().isoformat(),
             },
         })
+        # Forward important agent messages to Telegram
+        if role == "agent" and msg_type in ("result", "error") and self._telegram_callback:
+            try:
+                await self._telegram_callback(content, msg_type)
+            except Exception:
+                pass
 
     async def update_stats(self, **kwargs):
         self._stats.update(kwargs)

@@ -114,65 +114,55 @@ class CEOAgent:
         self.linkedin = LinkedInAgent()
 
     async def run_scrape_pipeline(self, query: str, location: str, count: int, niche: str) -> Dict:
-        searches = _plan_searches(query, location, count)
-        unlimited = (count >= 9999)
-
         cities = _get_city_list(location)
         queries = _query_variations(query)
+
+        # Count is always treated as a MINIMUM target – we NEVER stop early.
+        # The only stop condition is Maps returning no more results (stall exhausted).
+        target_label = f"mindst **{count}**" if count < 9999 else "ubegrænset"
 
         await monitor.emit_chat(
             "agent",
             f"Starter søgning: **{query}** i **{location}**\n"
-            + (f"Ingen grænse – kører til Maps løber tør\n" if unlimited else f"Mål: **{count} leads**\n")
-            + f"Plan: **{len(cities)} {'by' if len(cities)==1 else 'byer'}** × **{len(queries)} søgeterm{'er' if len(queries)>1 else ''}**",
+            f"Mål: {target_label} leads – stopper kun når Maps løber tør\n"
+            f"Plan: **{len(cities)} {'by' if len(cities)==1 else 'byer'}** × "
+            f"**{len(queries)} søgeterm{'er' if len(queries)>1 else ''}** = "
+            f"**{len(cities)*len(queries)} søgninger** parallelt",
         )
 
         await monitor.emit("ceo", "Orchestrator",
-            f"Plan: {len(searches)} søgninger ({len(cities)} byer × {len(queries)} termer)",
+            f"Plan: {len(cities)*len(queries)} søgninger ({len(cities)} byer × {len(queries)} termer)",
             "running")
 
         total_found = 0
         all_leads: List[Dict] = []
         search_num = 0
 
-        # Build flat list of (query, city) pairs for dual-parallel scraping
+        # Build flat list of (query, city) pairs – run ALL of them regardless of count
         search_pairs = [(q, city) for city in cities for q in queries]
         i = 0
-        goal_reached = False
 
-        while i < len(search_pairs) and not goal_reached:
-            current = await self._total_leads()
-            if not unlimited and current >= count:
-                await monitor.emit("ceo", "Orchestrator",
-                    f"Mål nået: {current} leads – stopper", "success", score=1.0)
-                break
-
+        while i < len(search_pairs):
             pair_a = search_pairs[i]
             pair_b = search_pairs[i + 1] if i + 1 < len(search_pairs) else None
             i += 2
-
             search_num += 1
+
+            current = await self._total_leads()
             await monitor.emit("ceo", "Orchestrator",
-                f"[{search_num}] '{pair_a[0]}' i {pair_a[1]}" +
-                (f" + '{pair_b[0]}' i {pair_b[1]}" if pair_b else ""),
+                f"[{search_num}/{len(search_pairs)//2+1}] '{pair_a[0]}' i {pair_a[1]}"
+                + (f" + '{pair_b[0]}' i {pair_b[1]}" if pair_b else "")
+                + f" | {current} leads i alt",
                 "running")
 
-            task_a = {
-                "query": pair_a[0],
-                "location": pair_a[1],
-                "count": MAPS_PER_SEARCH,
-                "niche": niche,
-                "goal": f"Find leads: {pair_a[0]} i {pair_a[1]}",
-            }
+            task_a = {"query": pair_a[0], "location": pair_a[1],
+                      "count": MAPS_PER_SEARCH, "niche": niche,
+                      "goal": f"Find leads: {pair_a[0]} i {pair_a[1]}"}
 
             if pair_b:
-                task_b = {
-                    "query": pair_b[0],
-                    "location": pair_b[1],
-                    "count": MAPS_PER_SEARCH,
-                    "niche": niche,
-                    "goal": f"Find leads: {pair_b[0]} i {pair_b[1]}",
-                }
+                task_b = {"query": pair_b[0], "location": pair_b[1],
+                          "count": MAPS_PER_SEARCH, "niche": niche,
+                          "goal": f"Find leads: {pair_b[0]} i {pair_b[1]}"}
                 results = await asyncio.gather(
                     self.scraper.execute(task_a),
                     self.scraper2.execute(task_b),
@@ -189,15 +179,11 @@ class CEOAgent:
                     found = result.get("leads_found", 0)
                     total_found += found
                     all_leads.extend(result.get("leads", []))
-                    if found < 5:
-                        await monitor.emit("ceo", "Orchestrator",
-                            f"Kun {found} leads fra søgning – prøver næste", "warning")
 
         final_total = await self._total_leads()
-        score = min(1.0, final_total / count) if not unlimited else 1.0
 
         await monitor.emit("ceo", "Orchestrator",
-            f"Færdig: {total_found} nye leads gemt (total: {final_total})", "success", score=score)
+            f"Færdig: {total_found} nye leads gemt (total: {final_total})", "success", score=1.0)
 
         await monitor.emit_chat("agent",
             f"Søgning færdig.\n\n"
@@ -206,7 +192,7 @@ class CEOAgent:
             f"Søgninger kørt: **{search_num}**",
             "result")
 
-        return {"score": score, "leads_found": total_found, "leads_target": count, "leads": all_leads}
+        return {"score": 1.0, "leads_found": total_found, "leads_target": count, "leads": all_leads}
 
     async def run_full_pipeline(self, query: str, location: str, count: int, niche: str) -> Dict:
         """

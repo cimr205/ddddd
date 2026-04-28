@@ -3,11 +3,15 @@ import os
 import uvicorn
 from dashboard.app import app
 from core.database import init_db
+from telegram_bot import telegram_bot
 
 
 async def main():
     os.makedirs("data", exist_ok=True)
     await init_db()
+
+    # Start Telegram bot in background (no-op if TELEGRAM_BOT_TOKEN not set)
+    asyncio.create_task(telegram_bot.start())
 
     config = uvicorn.Config(
         app=app,
@@ -19,6 +23,8 @@ async def main():
     )
     server = uvicorn.Server(config)
     await server.serve()
+
+    await telegram_bot.stop()
 
 
 if __name__ == "__main__":

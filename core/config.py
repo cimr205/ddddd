@@ -54,6 +54,12 @@ class Settings(BaseSettings):
     # Offentlig URL til dit system (for åbnings-tracking, valgfri)
     public_url: str = ""
 
+    # ── Telegram Bot ──────────────────────────────────────────────────────────
+    # Opret via @BotFather på Telegram: /newbot  → kopier token herind
+    telegram_bot_token: str = ""
+    # Din personlige chat ID – skriv /start til botten for at se den automatisk
+    telegram_chat_id: str = ""
+
     # ── App ───────────────────────────────────────────────────────────────────
     host: str = "0.0.0.0"
     port: int = 8000
